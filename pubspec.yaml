@@ -4,7 +4,7 @@ description: >-
   Domain-Driven Design (DDD) Feature-First architecture with Riverpod 2.0,
   Freezed models, fpdart Either, and full DIO data-source layers — from a single
   JSON config or a live cURL command.
-version: 1.0.0
+version: 1.0.1
 repository: https://github.com/AlvinRegiDev/ddd_pod_cli
 homepage: https://github.com/AlvinRegiDev/ddd_pod_cli
 

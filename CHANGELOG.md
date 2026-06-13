@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.0.1
+
+- Update package README with comprehensive usage instructions, options, and commands documentation.
+
 ## 1.0.0
 
 - Initial release of `ddd_pod_cli`.

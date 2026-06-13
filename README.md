@@ -29,6 +29,49 @@ Make sure your system PATH includes the Dart SDK cache bin directory.
 
 ---
 
+## Flutter Project Setup
+
+Before generating code or using the generated structures, ensure your Flutter project has the correct dependencies installed. The generated code relies on packages like **Riverpod 2.0**, **Freezed**, **fpdart**, and **Dio**.
+
+### 1. Add Dependencies
+
+Run the following commands in your target Flutter project directory:
+
+```bash
+# Add application dependencies
+flutter pub add flutter_riverpod riverpod_annotation freezed_annotation json_annotation fpdart dio shared_preferences
+
+# Add development dependencies (code generators)
+flutter pub add dev:build_runner dev:riverpod_generator dev:freezed dev:json_serializable
+```
+
+### 2. Verify `pubspec.yaml`
+
+Your `pubspec.yaml` should include these dependencies under their respective sections:
+
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+  fpdart: ^1.1.0
+  dio: ^5.5.0
+  shared_preferences: ^2.2.3 # Required for offline cache generation
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  build_runner: ^2.4.9
+  riverpod_generator: ^2.4.0
+  freezed: ^2.5.2
+  json_serializable: ^6.8.0
+```
+
+---
+
 ## Quick Start
 
 ### Step 1: Initialize Configuration

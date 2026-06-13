@@ -567,7 +567,7 @@ $importModel$importRepoImpl
 part '${_snake}_notifier.g.dart';
 
 @riverpod
-Future<$_dataType> $_camel(${_pascal}Ref ref$paramsArg) async {
+Future<$_dataType> $_camel(Ref ref$paramsArg) async {
   final repository = ref.watch(${_camel}RepositoryProvider);
   final result = await repository.get$_pascal($callArgs);
   return result.fold(
@@ -1011,7 +1011,7 @@ $importDto
 part '${_snake}_remote_data_source.g.dart';
 
 @riverpod
-${_pascal}RemoteDataSource ${_camel}RemoteDataSource(${_pascal}RemoteDataSourceRef ref) {
+${_pascal}RemoteDataSource ${_camel}RemoteDataSource(Ref ref) {
   // TODO: Replace with your global Dio provider, e.g.:
   //   final dio = ref.watch(dioProvider);
   //   return ${_pascal}RemoteDataSource(dio);
@@ -1156,7 +1156,7 @@ $importLocalSource$importDto
 part '${_snake}_repository_impl.g.dart';
 
 @riverpod
-I${_pascal}Repository ${_camel}Repository(${_pascal}RepositoryRef ref) {
+I${_pascal}Repository ${_camel}Repository(Ref ref) {
   final remoteDataSource = ref.watch(${_camel}RemoteDataSourceProvider);
 $watchLocal  return ${_pascal}RepositoryImpl(remoteDataSource$constructLocal);
 }
@@ -1275,7 +1275,7 @@ $importDto
 part '${_snake}_local_data_source.g.dart';
 
 @riverpod
-${_pascal}LocalDataSource ${_camel}LocalDataSource(${_pascal}LocalDataSourceRef ref) {
+${_pascal}LocalDataSource ${_camel}LocalDataSource(Ref ref) {
   // TODO: Replace with your global SharedPreferences provider, e.g.:
   //   final prefs = await ref.watch(sharedPreferencesProvider.future);
   //   return ${_pascal}LocalDataSource(prefs);
@@ -1370,8 +1370,7 @@ class ${_pascal}LocalDataSource {
 
     final isNotifier = parser.providerType == 'notifier' ||
         parser.providerType == 'async_notifier';
-    final providerName =
-        isNotifier ? '${_camel}NotifierProvider' : '${_camel}Provider';
+    final providerName = '${_camel}Provider';
     final watchExpr = 'ref.watch($providerName$providerArgsStr)';
 
     final String displayBody;
@@ -1447,7 +1446,7 @@ class ${_pascal}LocalDataSource {
 import 'package:$packageName/features/$_snake/application/${_snake}_form_notifier.dart';
 import 'package:$packageName/features/$_snake/application/${_snake}_form_state.dart';''';
       formStateWatch =
-          'final formState = ref.watch(${_camel}FormNotifierProvider);';
+          'final formState = ref.watch(${_camel}FormProvider);';
       final requestRootClass = _requestRootClass;
       if (requestRootClass != null) {
         for (final field in requestRootClass.fields) {
@@ -1469,7 +1468,7 @@ import 'package:$packageName/features/$_snake/application/${_snake}_form_state.d
                       : null,
                 ),
                 onChanged: ref
-                    .read(${_camel}FormNotifierProvider.notifier)
+                    .read(${_camel}FormProvider.notifier)
                     .update$pascal,
               ),
               const SizedBox(height: 16),''');
@@ -1491,7 +1490,7 @@ import 'package:$packageName/features/$_snake/application/${_snake}_form_state.d
                 keyboardType: TextInputType.number,
                 onChanged: (val) {
                   ref
-                      .read(${_camel}FormNotifierProvider.notifier)
+                      .read(${_camel}FormProvider.notifier)
                       .update$pascal($parser);
                 },
               ),
@@ -1503,7 +1502,7 @@ import 'package:$packageName/features/$_snake/application/${_snake}_form_state.d
                 value: formState.$name,
                 onChanged: (val) {
                   ref
-                      .read(${_camel}FormNotifierProvider.notifier)
+                      .read(${_camel}FormProvider.notifier)
                       .update$pascal(val ?? false);
                 },
               ),
@@ -1529,7 +1528,7 @@ import 'package:$packageName/features/$_snake/application/${_snake}_form_state.d
                     ? null
                     : () async {
                         final success = await ref
-                            .read(${_camel}FormNotifierProvider.notifier)
+                            .read(${_camel}FormProvider.notifier)
                             .submit($formSubmitArgs);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1672,10 +1671,7 @@ class ${_pascal}DebugPage extends ConsumerWidget {
         pathParamsMap.values.map((n) => "'mock_$n'").join(', ');
     final providerArgsStr = pathParamArgs.isNotEmpty ? '($pathParamArgs)' : '';
 
-    final isNotifier = parser.providerType == 'notifier' ||
-        parser.providerType == 'async_notifier';
-    final providerName =
-        isNotifier ? '${_camel}NotifierProvider' : '${_camel}Provider';
+    final providerName = '${_camel}Provider';
 
     final mockFields = <String>[];
     final mockMethods = <String>[];
@@ -1800,17 +1796,25 @@ class ${_pascal}DebugPage extends ConsumerWidget {
       final mockData = $mockDataStr;
       mockRepository.$getResultField = right(mockData);
 
+      // Listen to the provider to keep it alive
+      final subscription = container.listen($providerName$providerArgsStr, (_, __) {});
+
       final result = await container
           .read($providerName$providerArgsStr.future);
       expect(result, equals(mockData));
 
       final state = container.read($providerName$providerArgsStr);
       expect(state, equals(AsyncData(mockData)));
+
+      subscription.close();
     });
 
     test('failure resolves provider to AsyncError', () async {
       const failure = ${_pascal}Failure.serverError('Server error');
       mockRepository.$getResultField = left(failure);
+
+      // Listen to the provider to keep it alive
+      final subscription = container.listen($providerName$providerArgsStr, (_, __) {});
 
       await expectLater(
         container.read($providerName$providerArgsStr.future),
@@ -1819,6 +1823,8 @@ class ${_pascal}DebugPage extends ConsumerWidget {
 
       final state = container.read($providerName$providerArgsStr);
       expect(state, isA<AsyncError<$_dataType>>());
+
+      subscription.close();
     });''';
     }
 

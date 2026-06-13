@@ -233,7 +233,7 @@ void main() {
       final futureCode = genFuture.generateNotifierCode();
       expect(
         futureCode.contains(
-          'Future<DashboardModel> dashboard(DashboardRef ref)',
+          'Future<DashboardModel> dashboard(Ref ref)',
         ),
         isTrue,
       );
@@ -606,16 +606,16 @@ void main() {
           isTrue,
         );
         expect(
-          debugPageCode.contains('ref.watch(dashboardNotifierProvider)'),
+          debugPageCode.contains('ref.watch(dashboardProvider)'),
           isTrue,
         );
         expect(
-          debugPageCode.contains('ref.watch(dashboardFormNotifierProvider)'),
+          debugPageCode.contains('ref.watch(dashboardFormProvider)'),
           isTrue,
         );
         expect(
           debugPageCode.contains(
-            '.read(dashboardFormNotifierProvider.notifier)',
+            '.read(dashboardFormProvider.notifier)',
           ),
           isTrue,
         );
@@ -653,7 +653,7 @@ void main() {
         );
         expect(
           debugPageCode.contains(
-            '.read(dashboardFormNotifierProvider.notifier)',
+            '.read(dashboardFormProvider.notifier)',
           ),
           isTrue,
         );
@@ -779,7 +779,7 @@ void main() {
         final notifierCode2 = generator2.generateNotifierCode();
         expect(
           notifierCode2.contains(
-            'ref.read(defaultValueNotifierProvider.notifier)',
+            'ref.read(defaultValueProvider.notifier)',
           ),
           isFalse,
         );

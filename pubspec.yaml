@@ -1,0 +1,24 @@
+name: ddd_pod_cli
+description: >-
+  A robust Dart CLI tool that scaffolds complete
+  Domain-Driven Design (DDD) Feature-First architecture with Riverpod 2.0,
+  Freezed models, fpdart Either, and full DIO data-source layers — from a single
+  JSON config or a live cURL command.
+version: 1.0.0
+repository: https://github.com/AlvinRegiDev/ddd_pod_cli
+homepage: https://github.com/AlvinRegiDev/ddd_pod_cli
+
+environment:
+  sdk: ^3.4.0
+
+dependencies:
+  path: ^1.9.0
+  args: ^2.5.0
+  mason_logger: ^0.3.2
+
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.25.6
+
+executables:
+  ddd: main

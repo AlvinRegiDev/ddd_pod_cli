@@ -1,0 +1,19 @@
+# Dart tool output
+.dart_tool/
+build/
+
+# Generated files (checked-in selectively in Flutter apps, not in CLI tools)
+*.g.dart
+*.freezed.dart
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Test coverage
+coverage/

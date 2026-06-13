@@ -27,16 +27,11 @@ Future<void> main(List<String> args) async {
   // ── Top-level arg parser ─────────────────────────────────────────────────
   final globalParser = ArgParser()
     ..addFlag('verbose',
-        abbr: 'v',
-        negatable: false,
-        help: 'Print verbose / debug output.')
+        abbr: 'v', negatable: false, help: 'Print verbose / debug output.')
     ..addFlag('quiet',
-        abbr: 'q',
-        negatable: false,
-        help: 'Suppress all output except errors.')
+        abbr: 'q', negatable: false, help: 'Suppress all output except errors.')
     ..addFlag('no-color',
-        negatable: false,
-        help: 'Disable ANSI colour in output.')
+        negatable: false, help: 'Disable ANSI colour in output.')
     ..addCommand('generate', _buildGenerateParser())
     ..addCommand('curl', _buildCurlParser())
     ..addCommand('delete', _buildDeleteParser())
@@ -121,11 +116,9 @@ ArgParser _buildGenerateParser() => ArgParser()
       negatable: false,
       help: 'Overwrite existing files without prompting.')
   ..addFlag('skip-build-runner',
-      negatable: false,
-      help: 'Skip running build_runner after generation.')
+      negatable: false, help: 'Skip running build_runner after generation.')
   ..addFlag('debug-view',
-      negatable: false,
-      help: 'Generate a debug/presentation page.');
+      negatable: false, help: 'Generate a debug/presentation page.');
 
 ArgParser _buildCurlParser() => ArgParser()
   ..addOption(
@@ -145,16 +138,13 @@ ArgParser _buildCurlParser() => ArgParser()
       negatable: false,
       help: 'Overwrite existing files without prompting.')
   ..addFlag('skip-build-runner',
-      negatable: false,
-      help: 'Skip running build_runner after generation.')
+      negatable: false, help: 'Skip running build_runner after generation.')
   ..addFlag('debug-view',
-      negatable: false,
-      help: 'Generate a debug/presentation page.');
+      negatable: false, help: 'Generate a debug/presentation page.');
 
 ArgParser _buildDeleteParser() => ArgParser()
   ..addFlag('skip-build-runner',
-      negatable: false,
-      help: 'Skip running build_runner after deletion.')
+      negatable: false, help: 'Skip running build_runner after deletion.')
   ..addFlag('dry-run',
       negatable: false,
       help: 'Print what would be deleted without actually removing files.');
@@ -191,13 +181,15 @@ Future<void> _runCurl(ArgResults sub) async {
   if (featureName == null || featureName.isEmpty) {
     throw const ConfigException(
       message: 'The --feature-name flag is required for the curl command.',
-      hint: 'Example: ddd curl "curl https://api.example.com/v1/items" --feature-name Item',
+      hint:
+          'Example: ddd curl "curl https://api.example.com/v1/items" --feature-name Item',
     );
   }
   if (sub.rest.isEmpty) {
     throw const ConfigException(
       message: 'No cURL command provided.',
-      hint: 'Example: ddd curl "curl -X GET https://api.example.com/v1/items" --feature-name Item',
+      hint:
+          'Example: ddd curl "curl -X GET https://api.example.com/v1/items" --feature-name Item',
     );
   }
 
@@ -235,8 +227,7 @@ Future<void> _runInit(ArgResults sub) async {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Handle the old invocation style: `ddd config.json [--force] [FeatureName]`
-Future<void> _legacyGenerate(
-    ArgResults results, ArgParser globalParser) async {
+Future<void> _legacyGenerate(ArgResults results, ArgParser globalParser) async {
   final restArgs = results.rest;
   String? configPath;
   bool force = false;

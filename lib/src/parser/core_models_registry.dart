@@ -34,8 +34,7 @@ final class CoreModelsRegistry {
     domainClassesToPaths.clear();
     dtoClassesToPaths.clear();
 
-    final domainCoreDir =
-        Directory(p.join(projectLibPath, 'domain', 'core'));
+    final domainCoreDir = Directory(p.join(projectLibPath, 'domain', 'core'));
     if (domainCoreDir.existsSync()) {
       _scanDirectory(domainCoreDir, projectLibPath, domainClassesToPaths);
       logger.detail(
@@ -75,8 +74,7 @@ final class CoreModelsRegistry {
             r'^\s*(?:abstract\s+|final\s+|sealed\s+|base\s+)?class\s+([a-zA-Z0-9_]+)\b',
             multiLine: true,
           );
-          final relativePath =
-              p.relative(entity.path, from: projectLibPath);
+          final relativePath = p.relative(entity.path, from: projectLibPath);
           for (final match in classRegex.allMatches(content)) {
             final className = match.group(1)!;
             registryMap[className] = relativePath;
@@ -94,8 +92,7 @@ final class CoreModelsRegistry {
   ///
   /// Checks for both `PascalKey` and `PascalKeyModel` variants.
   String? findMatchingCoreDomainClass(String key) {
-    final pascalKey =
-        StringUtils.toPascalCase(StringUtils.singularize(key));
+    final pascalKey = StringUtils.toPascalCase(StringUtils.singularize(key));
     for (final className in domainClassesToPaths.keys) {
       if (className == pascalKey || className == '${pascalKey}Model') {
         return className;
@@ -127,14 +124,12 @@ final class CoreModelsRegistry {
     String className, {
     required bool isDto,
   }) {
-    final registryMap =
-        isDto ? dtoClassesToPaths : domainClassesToPaths;
+    final registryMap = isDto ? dtoClassesToPaths : domainClassesToPaths;
     final relativePath = registryMap[className];
     if (relativePath == null) return null;
     return 'package:$packageName/$relativePath';
   }
 
   /// Whether the registry has found any classes at all.
-  bool get isEmpty =>
-      domainClassesToPaths.isEmpty && dtoClassesToPaths.isEmpty;
+  bool get isEmpty => domainClassesToPaths.isEmpty && dtoClassesToPaths.isEmpty;
 }

@@ -66,7 +66,8 @@ Future<void> runDeleteCommand({
   }
 
   if (dryRun) {
-    logger.info('[DRY RUN] Nothing was deleted. Re-run without --dry-run to proceed.');
+    logger.info(
+        '[DRY RUN] Nothing was deleted. Re-run without --dry-run to proceed.');
     return;
   }
 

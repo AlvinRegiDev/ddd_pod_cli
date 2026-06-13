@@ -49,9 +49,7 @@ void main() {
       );
 
       // Find the status field in any domain model
-      final allFields = parser.domainClasses
-          .expand((c) => c.fields)
-          .toList();
+      final allFields = parser.domainClasses.expand((c) => c.fields).toList();
       final statusField = allFields.firstWhere(
         (f) => f.fieldName.contains('status'),
         orElse: () => allFields.first,
@@ -79,7 +77,8 @@ void main() {
       );
     });
 
-    test('handles paginated list and overrides future_provider to async_notifier',
+    test(
+        'handles paginated list and overrides future_provider to async_notifier',
         () {
       final parser = JsonParser(
         featureName: 'Users',
@@ -142,11 +141,11 @@ void main() {
         },
       );
 
-      final allDomainFields = parser.domainClasses
-          .expand((c) => c.fields)
-          .toList();
+      final allDomainFields =
+          parser.domainClasses.expand((c) => c.fields).toList();
       final detailsField = allDomainFields.firstWhere(
-        (f) => f.fieldName.contains('details') || f.fieldName == 'metadataDetails',
+        (f) =>
+            f.fieldName.contains('details') || f.fieldName == 'metadataDetails',
         orElse: () => allDomainFields.first,
       );
       expect(detailsField.typeName, 'Map<String, dynamic>');

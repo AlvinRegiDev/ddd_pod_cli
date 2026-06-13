@@ -869,15 +869,16 @@ void main() {
           isTrue,
         );
 
-        final remoteSourceCode = generatorListPrimitive
-            .generateRemoteDataSourceCode();
+        final remoteSourceCode =
+            generatorListPrimitive.generateRemoteDataSourceCode();
         expect(
           remoteSourceCode.contains('Future<List<String>> getTags() async'),
           isTrue,
         );
         // Updated: list.cast is the expected pattern from the generator
         expect(
-          remoteSourceCode.contains('getTags') && remoteSourceCode.contains('List<String>'),
+          remoteSourceCode.contains('getTags') &&
+              remoteSourceCode.contains('List<String>'),
           isTrue,
         );
       },
@@ -1168,7 +1169,8 @@ class PaginationDto {}
       },
     );
 
-    test('is_paginated_list generates paginated parameters and fetchNextPage', () {
+    test('is_paginated_list generates paginated parameters and fetchNextPage',
+        () {
       final parser = JsonParser(
         featureName: 'UsersList',
         responseJson: [
@@ -1218,7 +1220,8 @@ class PaginationDto {}
       );
       expect(notifierCode.contains('page: nextPage, limit: 10'), isTrue);
       expect(
-        notifierCode.contains('AsyncLoading<List<UsersListModel>>().copyWithPrevious(state)'),
+        notifierCode.contains(
+            'AsyncLoading<List<UsersListModel>>().copyWithPrevious(state)'),
         isTrue,
       );
     });
@@ -1292,7 +1295,8 @@ class PaginationDto {}
         );
         // Check for path pattern matching logic
         expect(
-          interceptorCode.contains('pathPattern') || interceptorCode.contains('patients'),
+          interceptorCode.contains('pathPattern') ||
+              interceptorCode.contains('patients'),
           isTrue,
         );
         // Check for mock response data

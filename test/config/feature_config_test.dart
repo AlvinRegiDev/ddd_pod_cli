@@ -21,29 +21,40 @@ void main() {
 
     test('throws ConfigException on missing feature_name', () {
       expect(
-        () => FeatureConfig.fromJson({'api_path': '/api/test', 'methods': ['GET']}),
+        () => FeatureConfig.fromJson({
+          'api_path': '/api/test',
+          'methods': ['GET']
+        }),
         throwsA(isA<ConfigException>()),
       );
     });
 
     test('throws ConfigException on empty feature_name', () {
       expect(
-        () => FeatureConfig.fromJson({'feature_name': '   ', 'methods': ['GET']}),
+        () => FeatureConfig.fromJson({
+          'feature_name': '   ',
+          'methods': ['GET']
+        }),
         throwsA(isA<ConfigException>()),
       );
     });
 
     test('throws ConfigException on feature_name starting with digit', () {
       expect(
-        () => FeatureConfig.fromJson({'feature_name': '1User', 'methods': ['GET']}),
+        () => FeatureConfig.fromJson({
+          'feature_name': '1User',
+          'methods': ['GET']
+        }),
         throwsA(isA<ConfigException>()),
       );
     });
 
     test('throws ConfigException on feature_name with spaces', () {
       expect(
-        () => FeatureConfig.fromJson(
-            {'feature_name': 'User Profile', 'methods': ['GET']}),
+        () => FeatureConfig.fromJson({
+          'feature_name': 'User Profile',
+          'methods': ['GET']
+        }),
         throwsA(isA<ConfigException>()),
       );
     });
@@ -58,8 +69,10 @@ void main() {
 
     test('throws ConfigException on unknown HTTP method', () {
       expect(
-        () => FeatureConfig.fromJson(
-            {'feature_name': 'Item', 'methods': ['SPIDER']}),
+        () => FeatureConfig.fromJson({
+          'feature_name': 'Item',
+          'methods': ['SPIDER']
+        }),
         throwsA(isA<ConfigException>()),
       );
     });

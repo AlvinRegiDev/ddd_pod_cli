@@ -59,7 +59,8 @@ Future<void> runInitCommand({
       'title': '',
       'is_active': false,
     },
-    '// post_request_body': 'Paste a representative POST/PUT request body here.',
+    '// post_request_body':
+        'Paste a representative POST/PUT request body here.',
     'type_overrides': {
       'created_at': 'DateTime',
     },
@@ -69,8 +70,7 @@ Future<void> runInitCommand({
     '// field_mapping':
         'Rename JSON keys to Dart field names. Key = JSON key, value = Dart name.',
     'is_paginated_list': false,
-    '// is_paginated_list':
-        'Set to true to generate paginated list support.',
+    '// is_paginated_list': 'Set to true to generate paginated list support.',
     'offline_cache': false,
     '// offline_cache':
         'Set to true to generate SharedPreferences offline cache layer.',
@@ -99,8 +99,7 @@ Future<void> runInitCommand({
   } catch (e) {
     throw DddFileSystemException(
       message: 'Could not write config.json to $outputPath\n$e',
-      hint:
-          'Check that you have write permissions to the directory.',
+      hint: 'Check that you have write permissions to the directory.',
       path: outputPath,
     );
   }

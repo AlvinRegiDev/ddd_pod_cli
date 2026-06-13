@@ -75,7 +75,8 @@ void main() {
       final barrelCode = generator.generateProvidersBarrelCode();
       expect(barrelCode.contains("export 'product_notifier.dart'"), isTrue);
       expect(barrelCode.contains("export 'product_state.dart'"), isTrue);
-      expect(barrelCode.contains("export 'product_form_notifier.dart'"), isTrue);
+      expect(
+          barrelCode.contains("export 'product_form_notifier.dart'"), isTrue);
       expect(barrelCode.contains("export 'product_form_state.dart'"), isTrue);
     });
 

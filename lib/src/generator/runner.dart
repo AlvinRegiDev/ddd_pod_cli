@@ -30,7 +30,13 @@ abstract final class Runner {
   static Future<bool> runBuildRunner({bool isFlutter = false}) async {
     final command = isFlutter ? 'flutter' : 'dart';
     final args = isFlutter
-        ? ['pub', 'run', 'build_runner', 'build', '--delete-conflicting-outputs']
+        ? [
+            'pub',
+            'run',
+            'build_runner',
+            'build',
+            '--delete-conflicting-outputs'
+          ]
         : ['run', 'build_runner', 'build', '--delete-conflicting-outputs'];
 
     logger.info(
@@ -46,8 +52,7 @@ abstract final class Runner {
       );
     } on ProcessException catch (e) {
       throw BuildRunnerException(
-        message:
-            'Could not start $command. Is it installed and on your PATH?\n'
+        message: 'Could not start $command. Is it installed and on your PATH?\n'
             'Process error: ${e.message}',
         hint: isFlutter
             ? 'Run "flutter doctor" to check your Flutter installation.'

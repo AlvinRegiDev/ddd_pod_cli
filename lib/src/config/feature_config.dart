@@ -24,18 +24,17 @@ enum HttpMethod {
   /// Parse a case-insensitive string into an [HttpMethod].
   /// Throws [ConfigException] on unknown values.
   static HttpMethod fromString(String s) => switch (s.toUpperCase()) {
-    'GET' => HttpMethod.get,
-    'POST' => HttpMethod.post,
-    'PUT' => HttpMethod.put,
-    'PATCH' => HttpMethod.patch,
-    'DELETE' => HttpMethod.delete,
-    'HEAD' => HttpMethod.head,
-    _ => throw ConfigException(
-      message: 'Unknown HTTP method: "$s".',
-      hint:
-          'Valid values are: GET, POST, PUT, PATCH, DELETE, HEAD.',
-    ),
-  };
+        'GET' => HttpMethod.get,
+        'POST' => HttpMethod.post,
+        'PUT' => HttpMethod.put,
+        'PATCH' => HttpMethod.patch,
+        'DELETE' => HttpMethod.delete,
+        'HEAD' => HttpMethod.head,
+        _ => throw ConfigException(
+            message: 'Unknown HTTP method: "$s".',
+            hint: 'Valid values are: GET, POST, PUT, PATCH, DELETE, HEAD.',
+          ),
+      };
 
   /// Upper-cased string representation (e.g. `"GET"`).
   String get value => name.toUpperCase();
@@ -65,10 +64,10 @@ enum ProviderType {
 
   /// The snake_case string used in JSON configs and generated code.
   String get jsonValue => switch (this) {
-    ProviderType.notifier => 'notifier',
-    ProviderType.asyncNotifier => 'async_notifier',
-    ProviderType.futureProvider => 'future_provider',
-  };
+        ProviderType.notifier => 'notifier',
+        ProviderType.asyncNotifier => 'async_notifier',
+        ProviderType.futureProvider => 'future_provider',
+      };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,8 +149,7 @@ final class FeatureConfig {
     if (rawName == null || rawName is! String || rawName.trim().isEmpty) {
       throw const ConfigException(
         message: 'Missing or empty "feature_name" field.',
-        hint:
-            'Add "feature_name": "YourFeatureName" to your config.json.',
+        hint: 'Add "feature_name": "YourFeatureName" to your config.json.',
       );
     }
     final featureName = rawName.trim();
@@ -169,17 +167,18 @@ final class FeatureConfig {
           hint: 'Add at least one method, e.g. ["GET"].',
         );
       }
-      methods = rawMethods.map((m) => HttpMethod.fromString(m.toString())).toList();
+      methods =
+          rawMethods.map((m) => HttpMethod.fromString(m.toString())).toList();
     } else {
       throw ConfigException(
-        message: '"methods" must be a JSON array, got ${rawMethods.runtimeType}.',
+        message:
+            '"methods" must be a JSON array, got ${rawMethods.runtimeType}.',
         hint: 'Example: "methods": ["GET", "POST"]',
       );
     }
 
     // ── api_path ─────────────────────────────────────────────────────────────
-    final apiPath =
-        (json['api_path'] ?? json['endpoint'] ?? '/').toString();
+    final apiPath = (json['api_path'] ?? json['endpoint'] ?? '/').toString();
 
     // ── provider_type ────────────────────────────────────────────────────────
     final rawProviderType = json['provider_type'] as String?;
@@ -194,12 +193,10 @@ final class FeatureConfig {
         : ProviderType.notifier;
 
     // ── get_response_dto ─────────────────────────────────────────────────────
-    final getResponseDto =
-        json['get_response_dto'] ?? json['payload'] ?? json;
+    final getResponseDto = json['get_response_dto'] ?? json['payload'] ?? json;
 
     // ── post_request_body ────────────────────────────────────────────────────
-    final postRequestBody =
-        json['post_request_body'] ??
+    final postRequestBody = json['post_request_body'] ??
         json['put_request_body'] ??
         json['patch_request_body'] ??
         json['request_body'];
@@ -240,8 +237,7 @@ final class FeatureConfig {
     final offlineCache = json['offline_cache'] as bool? ?? false;
 
     // Warn: paginated_list + future_provider is incompatible
-    if (isPaginatedList &&
-        providerType == ProviderType.futureProvider) {
+    if (isPaginatedList && providerType == ProviderType.futureProvider) {
       // Will be overridden to async_notifier in the parser; handled there.
     }
 
@@ -280,14 +276,16 @@ final class FeatureConfig {
     // Must start with a letter or underscore
     if (!RegExp(r'^[a-zA-Z_]').hasMatch(name)) {
       throw ConfigException(
-        message: '"feature_name" must start with a letter or underscore, got: "$name".',
+        message:
+            '"feature_name" must start with a letter or underscore, got: "$name".',
         hint: 'Example: "feature_name": "UserProfile"',
       );
     }
     // Must contain only letters, digits, underscores
     if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(name)) {
       throw ConfigException(
-        message: '"feature_name" must contain only letters, digits, or underscores, got: "$name".',
+        message:
+            '"feature_name" must contain only letters, digits, or underscores, got: "$name".',
         hint: 'Remove spaces and special characters. Example: "UserProfile"',
       );
     }

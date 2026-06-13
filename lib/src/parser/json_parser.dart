@@ -41,11 +41,11 @@ final class JsonParser {
     bool? isPaginatedList,
     bool? offlineCache,
     Map<String, dynamic>? validationRules,
-  }) : typeOverrides = typeOverrides ?? const {},
-       fieldMapping = fieldMapping ?? const {},
-       isPaginatedList = isPaginatedList ?? false,
-       offlineCache = offlineCache ?? false,
-       validationRules = validationRules ?? const {} {
+  })  : typeOverrides = typeOverrides ?? const {},
+        fieldMapping = fieldMapping ?? const {},
+        isPaginatedList = isPaginatedList ?? false,
+        offlineCache = offlineCache ?? false,
+        validationRules = validationRules ?? const {} {
     if (providerType != null) {
       this.providerType = providerType;
     }
@@ -164,8 +164,7 @@ final class JsonParser {
       responseDataType = '${rootClassName}Model';
       responseDtoType = '${rootClassName}Dto';
       final mergedMap = _mergeMaps(maps);
-      _inferDto(mergedMap, rootClassName, responseDtoClasses, false,
-          depth: 0);
+      _inferDto(mergedMap, rootClassName, responseDtoClasses, false, depth: 0);
     } else {
       final elemType = _inferListElementType(list);
       responseDataType = elemType;
@@ -173,8 +172,7 @@ final class JsonParser {
     }
   }
 
-  void _parseResponseMap(
-      Map<String, dynamic> map, String rootClassName) {
+  void _parseResponseMap(Map<String, dynamic> map, String rootClassName) {
     if (map.containsKey('provider_type')) {
       providerType = map['provider_type'] as String;
     }
@@ -198,8 +196,7 @@ final class JsonParser {
       final coreVal = map[foundEnvelopeKey];
       if (coreVal is List) {
         final hasMaps = coreVal.any((item) => item is Map<String, dynamic>);
-        final override =
-            typeOverrides[foundEnvelopeKey];
+        final override = typeOverrides[foundEnvelopeKey];
         final isModelListOverride = override != null &&
             (override.contains('Dto') || override.contains('Model'));
         if (hasMaps || isModelListOverride) {
@@ -249,8 +246,7 @@ final class JsonParser {
         message:
             'Schema nesting depth exceeds the maximum of $_kMaxDepth levels '
             '(at class "$className").',
-        hint:
-            'Simplify your JSON schema or add a "type_overrides" entry for '
+        hint: 'Simplify your JSON schema or add a "type_overrides" entry for '
             'the deeply-nested field.',
       );
     }
@@ -258,11 +254,9 @@ final class JsonParser {
     // ── Cycle guard ──────────────────────────────────────────────────────────
     if (_classNamesInProgress.contains(className)) {
       throw SchemaParseException(
-        message:
-            'Cyclic schema detected for class "$className". '
+        message: 'Cyclic schema detected for class "$className". '
             'Recursive JSON schemas are not supported.',
-        hint:
-            'Add a "type_overrides" entry to break the cycle, e.g. '
+        hint: 'Add a "type_overrides" entry to break the cycle, e.g. '
             '"$className": "Map<String, dynamic>".',
       );
     }
@@ -330,8 +324,7 @@ final class JsonParser {
     if (matchedDomainClass != null) {
       final matchedDtoClass =
           registry?.findMatchingCoreDtoClass(matchedDomainClass);
-      final dtoTypeName =
-          matchedDtoClass ?? '${matchedDomainClass}Dto';
+      final dtoTypeName = matchedDtoClass ?? '${matchedDomainClass}Dto';
 
       fields.add(DtoField(
         jsonKey: key,
@@ -342,12 +335,12 @@ final class JsonParser {
       ));
 
       if (packageName != null) {
-        final domainImport = registry?.getImportPath(packageName!,
-            matchedDomainClass, isDto: false);
+        final domainImport = registry
+            ?.getImportPath(packageName!, matchedDomainClass, isDto: false);
         if (domainImport != null) coreDomainImports.add(domainImport);
         if (matchedDtoClass != null) {
-          final dtoImport = registry?.getImportPath(packageName!,
-              matchedDtoClass, isDto: true);
+          final dtoImport = registry
+              ?.getImportPath(packageName!, matchedDtoClass, isDto: true);
           if (dtoImport != null) coreDtoImports.add(dtoImport);
         }
       }
@@ -391,8 +384,7 @@ final class JsonParser {
       if (matchedDomainClass != null) {
         final matchedDtoClass =
             registry?.findMatchingCoreDtoClass(matchedDomainClass);
-        final dtoTypeName =
-            matchedDtoClass ?? '${matchedDomainClass}Dto';
+        final dtoTypeName = matchedDtoClass ?? '${matchedDomainClass}Dto';
 
         fields.add(DtoField(
           jsonKey: key,
@@ -403,12 +395,12 @@ final class JsonParser {
         ));
 
         if (packageName != null) {
-          final domainImport = registry?.getImportPath(packageName!,
-              matchedDomainClass, isDto: false);
+          final domainImport = registry
+              ?.getImportPath(packageName!, matchedDomainClass, isDto: false);
           if (domainImport != null) coreDomainImports.add(domainImport);
           if (matchedDtoClass != null) {
-            final dtoImport = registry?.getImportPath(packageName!,
-                matchedDtoClass, isDto: true);
+            final dtoImport = registry
+                ?.getImportPath(packageName!, matchedDtoClass, isDto: true);
             if (dtoImport != null) coreDtoImports.add(dtoImport);
           }
         }
@@ -604,8 +596,9 @@ final class JsonParser {
       final fullPath = corePathToDomain.isEmpty
           ? fieldPath
           : [...corePathToDomain, ...newPath].join('.');
-      final overriddenType =
-          typeOverrides[fullPath] ?? typeOverrides[fieldPath] ?? typeOverrides[key];
+      final overriddenType = typeOverrides[fullPath] ??
+          typeOverrides[fieldPath] ??
+          typeOverrides[key];
 
       // Apply fieldMapping to each path segment when building the field name
       final mappedKey = fieldMapping[key] ?? StringUtils.snakeToCamel(key);
@@ -623,15 +616,12 @@ final class JsonParser {
       var finalType = overriddenType;
       if (finalType != null) {
         fields.add(DomainField(
-            fieldName: fieldName,
-            typeName: finalType,
-            jsonPath: newPath));
+            fieldName: fieldName, typeName: finalType, jsonPath: newPath));
         return;
       }
 
       if (value is Map<String, dynamic>) {
-        final matchedDomainClass =
-            registry?.findMatchingCoreDomainClass(key);
+        final matchedDomainClass = registry?.findMatchingCoreDomainClass(key);
         if (matchedDomainClass != null) {
           fields.add(DomainField(
             fieldName: fieldName,
@@ -641,8 +631,8 @@ final class JsonParser {
             nestedClassName: matchedDomainClass,
           ));
           if (packageName != null) {
-            final domainImport = registry?.getImportPath(packageName!,
-                matchedDomainClass, isDto: false);
+            final domainImport = registry
+                ?.getImportPath(packageName!, matchedDomainClass, isDto: false);
             if (domainImport != null) coreDomainImports.add(domainImport);
           }
         } else {
@@ -677,8 +667,9 @@ final class JsonParser {
                 nestedClassName: matchedDomainClass,
               ));
               if (packageName != null) {
-                final domainImport = registry?.getImportPath(packageName!,
-                    matchedDomainClass, isDto: false);
+                final domainImport = registry?.getImportPath(
+                    packageName!, matchedDomainClass,
+                    isDto: false);
                 if (domainImport != null) {
                   coreDomainImports.add(domainImport);
                 }
@@ -689,8 +680,7 @@ final class JsonParser {
               final nestedDtoClassName =
                   '$dtoPrefix${StringUtils.toPascalCase(singularKey)}Dto';
 
-              final maps =
-                  value.whereType<Map<String, dynamic>>().toList();
+              final maps = value.whereType<Map<String, dynamic>>().toList();
               final mergedMap = _mergeMaps(maps);
 
               final nestedFields = <DomainField>[];
@@ -723,9 +713,8 @@ final class JsonParser {
             // Enum hint for primitive string lists
             final enumValues = _enumHint(value);
             final elementTypeName = _inferListElementType(value);
-            final typeString = elementTypeName == 'dynamic'
-                ? 'dynamic'
-                : '$elementTypeName?';
+            final typeString =
+                elementTypeName == 'dynamic' ? 'dynamic' : '$elementTypeName?';
             fields.add(DomainField(
               fieldName: fieldName,
               typeName: 'List<$typeString>?',

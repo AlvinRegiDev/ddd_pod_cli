@@ -31,10 +31,8 @@ Future<void> runGenerateCommand({
 
   if (!configFile.existsSync()) {
     throw DddFileSystemException(
-      message:
-          'Configuration file not found at: $configFilePath',
-      hint:
-          'Run "ddd init" to create a template config.json, or specify the '
+      message: 'Configuration file not found at: $configFilePath',
+      hint: 'Run "ddd init" to create a template config.json, or specify the '
           'path explicitly: ddd generate path/to/config.json',
       path: configFilePath,
     );
@@ -47,8 +45,7 @@ Future<void> runGenerateCommand({
     final decoded = jsonDecode(rawContent);
     if (decoded is! Map<String, dynamic>) {
       throw const ConfigException(
-        message:
-            'Configuration file must contain a JSON object at its root.',
+        message: 'Configuration file must contain a JSON object at its root.',
         hint: 'Check that your config.json starts with { and ends with }.',
       );
     }
@@ -56,8 +53,7 @@ Future<void> runGenerateCommand({
   } on FormatException catch (e) {
     throw ConfigException(
       message: 'Failed to parse configuration file: ${e.message}',
-      hint:
-          'Validate your config.json with a JSON linter '
+      hint: 'Validate your config.json with a JSON linter '
           '(e.g. https://jsonlint.com).',
     );
   }
@@ -73,16 +69,14 @@ Future<void> runGenerateCommand({
   logger.info('Provider : ${config.providerTypeString}');
 
   // ── Scaffold directories ───────────────────────────────────────────────────
-  final scaffolder =
-      DirectoryScaffolder(featureName: config.featureName);
+  final scaffolder = DirectoryScaffolder(featureName: config.featureName);
   final packageName = scaffolder.getHostPackageName();
   final isFlutter = scaffolder.isFlutterProject();
   logger.info(
     'Package  : $packageName (Flutter: $isFlutter)',
   );
 
-  final dirProgress =
-      logger.progress('Scaffolding DDD directory structure');
+  final dirProgress = logger.progress('Scaffolding DDD directory structure');
   final Map<String, Directory> directories;
   try {
     directories = scaffolder.scaffold(withDebugView: config.withDebugView);
@@ -149,8 +143,7 @@ Future<void> runGenerateCommand({
   }
 
   // ── Format ─────────────────────────────────────────────────────────────────
-  final snakeFeature =
-      StringUtils.toSnakeCase(config.featureName);
+  final snakeFeature = StringUtils.toSnakeCase(config.featureName);
   final featurePath = p.join('lib', 'features', snakeFeature);
   Runner.runFormat(featurePath);
 

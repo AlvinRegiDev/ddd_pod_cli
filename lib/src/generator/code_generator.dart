@@ -64,18 +64,18 @@ final class CodeGenerator {
 
     // ── application/ ──────────────────────────────────────────────────────
     final appDir = directories['application']!;
-    safeWriteToFile(p.join(appDir.path, '${snake}_state.dart'),
-        generateStateCode());
-    safeWriteToFile(p.join(appDir.path, '${snake}_notifier.dart'),
-        generateNotifierCode());
+    safeWriteToFile(
+        p.join(appDir.path, '${snake}_state.dart'), generateStateCode());
+    safeWriteToFile(
+        p.join(appDir.path, '${snake}_notifier.dart'), generateNotifierCode());
     if (parser.requestJson != null) {
       safeWriteToFile(p.join(appDir.path, '${snake}_form_state.dart'),
           generateFormStateCode());
       safeWriteToFile(p.join(appDir.path, '${snake}_form_notifier.dart'),
           generateFormNotifierCode());
     }
-    safeWriteToFile(p.join(appDir.path, 'providers.dart'),
-        generateProvidersBarrelCode());
+    safeWriteToFile(
+        p.join(appDir.path, 'providers.dart'), generateProvidersBarrelCode());
 
     // ── domain/ ───────────────────────────────────────────────────────────
     final domainDir = directories['domain']!;
@@ -83,47 +83,40 @@ final class CodeGenerator {
       safeWriteToFile(p.join(domainDir.path, '${snake}_model.dart'),
           generateDomainModelCode());
     }
-    safeWriteToFile(p.join(domainDir.path, '${snake}_failure.dart'),
-        generateFailureCode());
     safeWriteToFile(
-        p.join(domainDir.path, 'i_${snake}_repository.dart'),
+        p.join(domainDir.path, '${snake}_failure.dart'), generateFailureCode());
+    safeWriteToFile(p.join(domainDir.path, 'i_${snake}_repository.dart'),
         generateIRepositoryCode());
 
     // ── infrastructure/ ──────────────────────────────────────────────────
     final infraDir = directories['infrastructure']!;
     if (parser.responseDtoClasses.isNotEmpty ||
         parser.requestDtoClasses.isNotEmpty) {
-      safeWriteToFile(p.join(infraDir.path, '${snake}_dto.dart'),
-          generateDtoCode());
+      safeWriteToFile(
+          p.join(infraDir.path, '${snake}_dto.dart'), generateDtoCode());
     }
-    safeWriteToFile(
-        p.join(infraDir.path, '${snake}_remote_data_source.dart'),
+    safeWriteToFile(p.join(infraDir.path, '${snake}_remote_data_source.dart'),
         generateRemoteDataSourceCode());
-    safeWriteToFile(
-        p.join(infraDir.path, '${snake}_repository_impl.dart'),
+    safeWriteToFile(p.join(infraDir.path, '${snake}_repository_impl.dart'),
         generateRepositoryImplCode());
-    safeWriteToFile(
-        p.join(infraDir.path, '${snake}_mock_interceptor.dart'),
+    safeWriteToFile(p.join(infraDir.path, '${snake}_mock_interceptor.dart'),
         generateMockInterceptorCode());
     if (offlineCache) {
-      safeWriteToFile(
-          p.join(infraDir.path, '${snake}_local_data_source.dart'),
+      safeWriteToFile(p.join(infraDir.path, '${snake}_local_data_source.dart'),
           generateLocalDataSourceCode());
     }
 
     // ── presentation/ ─────────────────────────────────────────────────────
     final presentationDir = directories['presentation'];
     if (presentationDir != null) {
-      safeWriteToFile(
-          p.join(presentationDir.path, '${snake}_debug_page.dart'),
+      safeWriteToFile(p.join(presentationDir.path, '${snake}_debug_page.dart'),
           generateDebugPageCode());
     }
 
     // ── test/application/ ─────────────────────────────────────────────────
     final testAppDir = directories['test_application'];
     if (testAppDir != null) {
-      safeWriteToFile(
-          p.join(testAppDir.path, '${snake}_notifier_test.dart'),
+      safeWriteToFile(p.join(testAppDir.path, '${snake}_notifier_test.dart'),
           generateNotifierTestCode());
     }
 
@@ -176,8 +169,7 @@ final class CodeGenerator {
     } catch (e) {
       throw DddFileSystemException(
         message: 'Could not write file: $path\n$e',
-        hint:
-            'Check that you have write permissions to the target directory.',
+        hint: 'Check that you have write permissions to the target directory.',
         path: path,
       );
     }
@@ -185,8 +177,7 @@ final class CodeGenerator {
 
   /// Compatibility shim — delegates to [safeWriteToFile].
   @Deprecated('Use safeWriteToFile directly')
-  void writeFile(File file, String content,
-      {required bool isUserEdited}) =>
+  void writeFile(File file, String content, {required bool isUserEdited}) =>
       safeWriteToFile(file.path, content);
 
   // ── Derived names ─────────────────────────────────────────────────────────
@@ -224,17 +215,13 @@ final class CodeGenerator {
 
   Map<String, String> get pathParamsMap {
     final map = <String, String>{};
-    for (final match
-        in RegExp(r':([a-zA-Z0-9_]+)').allMatches(endpoint)) {
+    for (final match in RegExp(r':([a-zA-Z0-9_]+)').allMatches(endpoint)) {
       final raw = match.group(1)!;
-      map[':$raw'] =
-          Keywords.getSafeName(StringUtils.snakeToCamel(raw));
+      map[':$raw'] = Keywords.getSafeName(StringUtils.snakeToCamel(raw));
     }
-    for (final match
-        in RegExp(r'\{([a-zA-Z0-9_]+)\}').allMatches(endpoint)) {
+    for (final match in RegExp(r'\{([a-zA-Z0-9_]+)\}').allMatches(endpoint)) {
       final raw = match.group(1)!;
-      map['{$raw}'] =
-          Keywords.getSafeName(StringUtils.snakeToCamel(raw));
+      map['{$raw}'] = Keywords.getSafeName(StringUtils.snakeToCamel(raw));
     }
     return map;
   }
@@ -302,9 +289,7 @@ final class CodeGenerator {
   String _remoteSourceReturnType(String method) {
     if (method.toUpperCase() != 'GET') return 'void';
     if (parser.responseDtoClasses.isNotEmpty) {
-      return parser.isTopLevelList
-          ? 'List<${_pascal}Dto>'
-          : '${_pascal}Dto';
+      return parser.isTopLevelList ? 'List<${_pascal}Dto>' : '${_pascal}Dto';
     }
     return parser.isTopLevelList
         ? 'List<${parser.responseDtoType}>'
@@ -355,9 +340,7 @@ final class CodeGenerator {
   }
 
   String _cacheParams() {
-    return pathParamsMap.values
-        .map((n) => 'String $n')
-        .join(', ');
+    return pathParamsMap.values.map((n) => 'String $n').join(', ');
   }
 
   String _cacheCallArgs() {
@@ -432,10 +415,9 @@ sealed class ${_pascal}State with _\$${_pascal}State {
     final importModel = hasDomain
         ? "import 'package:$packageName/features/$_snake/domain/${_snake}_model.dart';\n"
         : '';
-    final importDto =
-        hasDto && parser.requestJson != null
-            ? "import 'package:$packageName/features/$_snake/infrastructure/${_snake}_dto.dart';\n"
-            : '';
+    final importDto = hasDto && parser.requestJson != null
+        ? "import 'package:$packageName/features/$_snake/infrastructure/${_snake}_dto.dart';\n"
+        : '';
     final importRepoImpl =
         "import 'package:$packageName/features/$_snake/infrastructure/${_snake}_repository_impl.dart';\n";
     final buildParams = _notifierBuildParams();
@@ -713,8 +695,7 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
     ].join(', ');
 
     if (parser.providerType == 'async_notifier') {
-      final buildCallArgs =
-          pathParamsMap.values.join(', ');
+      final buildCallArgs = pathParamsMap.values.join(', ');
       return '''
   /// Submit form data to the remote source.
   Future<void> submit({$params}) async {
@@ -878,8 +859,8 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
           break;
         }
       }
-      final isRootResponse = !dtoClass.isRequest &&
-          dtoClass.className == _pascal;
+      final isRootResponse =
+          !dtoClass.isRequest && dtoClass.className == _pascal;
       final needsToDomain = matchingDomain != null ||
           (isRootResponse && parser.corePathToDomain.isNotEmpty);
 
@@ -898,8 +879,7 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
       }
       sb.writeln('  }) = _\$${fullName}Impl;');
       sb.writeln();
-      sb.writeln(
-          '  factory $fullName.fromJson(Map<String, dynamic> json) =>');
+      sb.writeln('  factory $fullName.fromJson(Map<String, dynamic> json) =>');
       sb.writeln('      _\$${fullName}FromJson(json);');
 
       if (needsToDomain) {
@@ -916,8 +896,8 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
                   StringUtils.snakeToCamel(segment);
               final dartSeg = Keywords.getSafeName(mapped);
               if (isLast && domainField.isNestedList) {
-                expressionSegments.add(
-                    '$dartSeg?.map((e) => e.toDomain()).toList()');
+                expressionSegments
+                    .add('$dartSeg?.map((e) => e.toDomain()).toList()');
               } else if (isLast && domainField.isNestedObject) {
                 expressionSegments.add('$dartSeg?.toDomain()');
               } else {
@@ -934,13 +914,11 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
               StringUtils.snakeToCamel(parser.corePathToDomain.first);
           final coreField = Keywords.getSafeName(mapped);
           if (parser.isListResponse) {
-            sb.writeln(
-                '  List<${parser.responseDataType}> toDomain() =>');
+            sb.writeln('  List<${parser.responseDataType}> toDomain() =>');
             sb.writeln(
                 '      $coreField?.map((e) => e.toDomain()).toList() ?? const [];');
           } else {
-            sb.writeln(
-                '  ${parser.responseDataType} toDomain() =>');
+            sb.writeln('  ${parser.responseDataType} toDomain() =>');
             sb.writeln(
                 '      $coreField?.toDomain() ?? const ${parser.responseDataType}();');
           }
@@ -990,8 +968,7 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
         sb.writeln('      if (response.data != null) {');
         if (hasDto) {
           if (parser.isTopLevelList) {
-            sb.writeln(
-                '        final list = response.data as List<dynamic>;');
+            sb.writeln('        final list = response.data as List<dynamic>;');
             sb.writeln(
                 '        return list.map((e) => ${_pascal}Dto.fromJson(e as Map<String, dynamic>)).toList();');
           } else {
@@ -1016,8 +993,7 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
       } else {
         final dataParam =
             _hasRequestBody(method) ? ', data: request.toJson()' : '';
-        sb.writeln(
-            '      await _dio.$dioMethod($endpointStr$dataParam);');
+        sb.writeln('      await _dio.$dioMethod($endpointStr$dataParam);');
       }
 
       sb.writeln('    } catch (e) {');
@@ -1075,8 +1051,7 @@ ${sb.toString()}}
     final declareLocal = offlineCache
         ? '  final ${_pascal}LocalDataSource _localDataSource;\n'
         : '';
-    final initLocal =
-        offlineCache ? ', this._localDataSource' : '';
+    final initLocal = offlineCache ? ', this._localDataSource' : '';
 
     final sb = StringBuffer();
 
@@ -1123,8 +1098,7 @@ ${sb.toString()}}
                 : 'response.toDomain()')
             : 'response';
         final cacheArgs = _cacheCallArgs();
-        final cacheArgsStr =
-            cacheArgs.isNotEmpty ? '$cacheArgs, ' : '';
+        final cacheArgsStr = cacheArgs.isNotEmpty ? '$cacheArgs, ' : '';
 
         sb.writeln(
             '      final response = await _remoteDataSource.$methodName($callArgs);');
@@ -1134,20 +1108,15 @@ ${sb.toString()}}
         }
         sb.writeln('      return right($mappingExpr);');
       } else {
-        sb.writeln(
-            '      await _remoteDataSource.$methodName($callArgs);');
+        sb.writeln('      await _remoteDataSource.$methodName($callArgs);');
         sb.writeln('      return right(unit);');
       }
 
       sb.writeln('    } on DioException catch (e) {');
-      sb.writeln(
-          '      if (e.type == DioExceptionType.connectionTimeout ||');
-      sb.writeln(
-          '          e.type == DioExceptionType.sendTimeout ||');
-      sb.writeln(
-          '          e.type == DioExceptionType.receiveTimeout ||');
-      sb.writeln(
-          '          e.type == DioExceptionType.connectionError) {');
+      sb.writeln('      if (e.type == DioExceptionType.connectionTimeout ||');
+      sb.writeln('          e.type == DioExceptionType.sendTimeout ||');
+      sb.writeln('          e.type == DioExceptionType.receiveTimeout ||');
+      sb.writeln('          e.type == DioExceptionType.connectionError) {');
       sb.writeln(
           "        return left(const ${_pascal}Failure.networkError());");
       sb.writeln('      }');
@@ -1258,9 +1227,7 @@ class ${_pascal}MockInterceptor extends Interceptor {
     final isList = parser.isTopLevelList;
     final dtoType = hasDto
         ? (isList ? 'List<${_pascal}Dto>' : '${_pascal}Dto')
-        : (isList
-            ? 'List<${parser.responseDtoType}>'
-            : parser.responseDtoType);
+        : (isList ? 'List<${parser.responseDtoType}>' : parser.responseDtoType);
 
     final String serializerCall;
     final String deserializerCall;
@@ -1283,21 +1250,20 @@ class ${_pascal}MockInterceptor extends Interceptor {
         ? "import 'package:$packageName/features/$_snake/infrastructure/${_snake}_dto.dart';\n"
         : '';
     final cacheParams = _cacheParams();
-    final paramWithComma =
-        cacheParams.isNotEmpty ? '$cacheParams, ' : '';
+    final paramWithComma = cacheParams.isNotEmpty ? '$cacheParams, ' : '';
     final callArgs = _cacheCallArgs();
 
     final String cacheKeyExpr;
     if (pathParamsMap.isNotEmpty) {
-      final suffixStr =
-          pathParamsMap.values.map((v) => '\$$v').join('_');
+      final suffixStr = pathParamsMap.values.map((v) => '\$$v').join('_');
       cacheKeyExpr = "'\${_cacheKey}_$suffixStr'";
     } else {
       cacheKeyExpr = '_cacheKey';
     }
 
-    final paramName =
-        hasDto ? (isList ? 'List<${_pascal}Dto> dtos' : '${_pascal}Dto dto') : '$dtoType data';
+    final paramName = hasDto
+        ? (isList ? 'List<${_pascal}Dto> dtos' : '${_pascal}Dto dto')
+        : '$dtoType data';
 
     return '''
 ${_fileHeader(editable: true)}
@@ -1398,17 +1364,14 @@ class ${_pascal}LocalDataSource {
     final hasDto = parser.responseDtoClasses.isNotEmpty ||
         parser.requestDtoClasses.isNotEmpty;
 
-    final pathParamArgs = pathParamsMap.values
-        .map((n) => "'mock_$n'")
-        .join(', ');
-    final providerArgsStr =
-        pathParamArgs.isNotEmpty ? '($pathParamArgs)' : '';
+    final pathParamArgs =
+        pathParamsMap.values.map((n) => "'mock_$n'").join(', ');
+    final providerArgsStr = pathParamArgs.isNotEmpty ? '($pathParamArgs)' : '';
 
     final isNotifier = parser.providerType == 'notifier' ||
         parser.providerType == 'async_notifier';
-    final providerName = isNotifier
-        ? '${_camel}NotifierProvider'
-        : '${_camel}Provider';
+    final providerName =
+        isNotifier ? '${_camel}NotifierProvider' : '${_camel}Provider';
     final watchExpr = 'ref.watch($providerName$providerArgsStr)';
 
     final String displayBody;
@@ -1557,9 +1520,8 @@ import 'package:$packageName/features/$_snake/application/${_snake}_form_state.d
           }
         }
 
-        final formSubmitArgs = pathParamsMap.values
-            .map((n) => "$n: 'mock_$n'")
-            .join(', ');
+        final formSubmitArgs =
+            pathParamsMap.values.map((n) => "$n: 'mock_$n'").join(', ');
 
         formSubmitButton = '''
               ElevatedButton(
@@ -1706,17 +1668,14 @@ class ${_pascal}DebugPage extends ConsumerWidget {
       sbImports.writeln("import '$imp';");
     }
 
-    final pathParamArgs = pathParamsMap.values
-        .map((n) => "'mock_$n'")
-        .join(', ');
-    final providerArgsStr =
-        pathParamArgs.isNotEmpty ? '($pathParamArgs)' : '';
+    final pathParamArgs =
+        pathParamsMap.values.map((n) => "'mock_$n'").join(', ');
+    final providerArgsStr = pathParamArgs.isNotEmpty ? '($pathParamArgs)' : '';
 
     final isNotifier = parser.providerType == 'notifier' ||
         parser.providerType == 'async_notifier';
-    final providerName = isNotifier
-        ? '${_camel}NotifierProvider'
-        : '${_camel}Provider';
+    final providerName =
+        isNotifier ? '${_camel}NotifierProvider' : '${_camel}Provider';
 
     final mockFields = <String>[];
     final mockMethods = <String>[];
@@ -1728,8 +1687,7 @@ class ${_pascal}DebugPage extends ConsumerWidget {
           returnType.substring('Future<'.length, returnType.length - 1);
       mockFields.add('$innerType? ${name}Result;');
 
-      final params =
-          _repositoryParams(isWrite: _hasRequestBody(method));
+      final params = _repositoryParams(isWrite: _hasRequestBody(method));
       mockMethods.add('''
   @override
   $returnType $name($params) async {
@@ -1777,9 +1735,8 @@ class ${_pascal}DebugPage extends ConsumerWidget {
       }
     } else if (successResponse != null) {
       if (parser.isListResponse && successResponse is List) {
-        final elems = (successResponse as List)
-            .map(_formatDartLiteral)
-            .join(', ');
+        final elems =
+            (successResponse as List).map(_formatDartLiteral).join(', ');
         mockDataStr = '[$elems]';
       } else {
         mockDataStr = _formatDartLiteral(successResponse);
@@ -1963,8 +1920,7 @@ ${sb.toString()}    @Default(false) bool isSubmitting,
         if (otherRule is Map<String, dynamic> &&
             (otherRule['matches'] == field.jsonKey ||
                 otherRule['matches'] == field.dartName)) {
-          final otherPascal =
-              StringUtils.toPascalCase(other.dartName);
+          final otherPascal = StringUtils.toPascalCase(other.dartName);
           dependentAssignments.add(
               '${other.dartName}Error: _validate$otherPascal(state.${other.dartName}),');
         }
@@ -2007,9 +1963,8 @@ ${sb.toString()}    @Default(false) bool isSubmitting,
         .join(', ');
     repoArgs.add('request: ${_pascal}RequestDto($assignments)');
 
-    final submitParamsStr = submitParams.isNotEmpty
-        ? '{${submitParams.join(', ')}}'
-        : '';
+    final submitParamsStr =
+        submitParams.isNotEmpty ? '{${submitParams.join(', ')}}' : '';
     final repoArgsStr = repoArgs.join(', ');
 
     final allValid = requestRootClass.fields
@@ -2110,8 +2065,7 @@ ${validatorsSb.toString()}
     };
   }
 
-  String _validatorMethod(
-      DtoField field, Map<String, dynamic>? ruleMap) {
+  String _validatorMethod(DtoField field, Map<String, dynamic>? ruleMap) {
     final name = field.dartName;
     final pascal = StringUtils.toPascalCase(name);
     final paramType = _formParamType(field.typeName);
@@ -2158,8 +2112,7 @@ ${validatorsSb.toString()}
       sb.writeln('    }');
     }
 
-    final isEmailField =
-        isEmail || typeRule == 'email';
+    final isEmailField = isEmail || typeRule == 'email';
     if (isEmailField && paramType == 'String') {
       sb.writeln(
           r"    final emailRegex = RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,}$');");
@@ -2218,8 +2171,7 @@ ${validatorsSb.toString()}
     return 'null';
   }
 
-  String _generateDtoInstantiation(
-      String className, Map<String, dynamic> map) {
+  String _generateDtoInstantiation(String className, Map<String, dynamic> map) {
     final sb = StringBuffer()..write('${className}Dto(');
     final dtoClass = [
       ...parser.requestDtoClasses,
@@ -2240,17 +2192,16 @@ ${validatorsSb.toString()}
       } else if (field.isNestedList && val is List) {
         final elems = val
             .whereType<Map<String, dynamic>>()
-            .map((e) =>
-                _generateDtoInstantiation(field.nestedClassName!, e))
+            .map((e) => _generateDtoInstantiation(field.nestedClassName!, e))
             .join(', ');
         assignments.add('${field.dartName}: [$elems]');
       } else {
-        if ((field.typeName == 'DateTime' || field.typeName == 'DateTime?') && val is String) {
+        if ((field.typeName == 'DateTime' || field.typeName == 'DateTime?') &&
+            val is String) {
           assignments.add(
               '${field.dartName}: DateTime.parse(${_formatDartLiteral(val)})');
         } else {
-          assignments.add(
-              '${field.dartName}: ${_formatDartLiteral(val)}');
+          assignments.add('${field.dartName}: ${_formatDartLiteral(val)}');
         }
       }
     }

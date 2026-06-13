@@ -107,8 +107,7 @@ final class BuildRunnerException extends DddCliException {
   final int? exitCode;
 
   @override
-  String toString() =>
-      'BuildRunnerException: $message'
+  String toString() => 'BuildRunnerException: $message'
       '${exitCode != null ? " (exit code: $exitCode)" : ""}';
 }
 
@@ -129,7 +128,6 @@ final class NetworkException extends DddCliException {
   final int? statusCode;
 
   @override
-  String toString() =>
-      'NetworkException: $message'
+  String toString() => 'NetworkException: $message'
       '${statusCode != null ? " (HTTP $statusCode)" : ""}';
 }

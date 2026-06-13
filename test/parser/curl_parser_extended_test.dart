@@ -13,7 +13,8 @@ void main() {
     });
 
     test('ignores leading "curl" token', () {
-      final req = CurlParser.parse('curl -X GET https://api.example.com/v1/items');
+      final req =
+          CurlParser.parse('curl -X GET https://api.example.com/v1/items');
       expect(req.method, 'GET');
       expect(req.url, 'https://api.example.com/v1/items');
     });
@@ -26,8 +27,8 @@ void main() {
     });
 
     test('parses -X method override', () {
-      final req = CurlParser.parse(
-          'curl -X POST https://api.example.com/v1/users');
+      final req =
+          CurlParser.parse('curl -X POST https://api.example.com/v1/users');
       expect(req.method, 'POST');
     });
 
@@ -67,7 +68,8 @@ void main() {
 
     test('throws NetworkException when no URL found', () {
       expect(
-        () => CurlParser.parse('curl -X GET --header "Authorization: Bearer abc"'),
+        () => CurlParser.parse(
+            'curl -X GET --header "Authorization: Bearer abc"'),
         throwsA(isA<NetworkException>()),
       );
     });

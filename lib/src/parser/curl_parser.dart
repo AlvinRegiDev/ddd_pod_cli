@@ -178,8 +178,7 @@ abstract final class CurlParser {
   /// - Response body exceeding [_maxResponseBytes]
   /// - JSON parse failure (returns raw string instead — no exception)
   static Future<dynamic> execute(CurlRequest request) async {
-    final client = HttpClient()
-      ..connectionTimeout = _timeout;
+    final client = HttpClient()..connectionTimeout = _timeout;
 
     try {
       final uri = Uri.parse(request.url);
@@ -188,8 +187,7 @@ abstract final class CurlParser {
           .timeout(_timeout, onTimeout: () {
         throw const NetworkException(
           message: 'Connection timed out.',
-          hint:
-              'Check that the server is reachable and try again, or use '
+          hint: 'Check that the server is reachable and try again, or use '
               '--skip-build-runner with a config.json instead.',
         );
       });
@@ -214,8 +212,7 @@ abstract final class CurlParser {
         if (receivedBytes > _maxResponseBytes) {
           throw const NetworkException(
             message: 'Response body exceeds the 10 MB size limit.',
-            hint:
-                'The API returned an unusually large payload. Use a '
+            hint: 'The API returned an unusually large payload. Use a '
                 'config.json with a representative sample instead.',
           );
         }
@@ -226,8 +223,7 @@ abstract final class CurlParser {
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw NetworkException(
-          message:
-              'Server returned HTTP ${response.statusCode}: $responseBody',
+          message: 'Server returned HTTP ${response.statusCode}: $responseBody',
           statusCode: response.statusCode,
           hint:
               'Check the URL and any required authentication headers (-H or -u).',
@@ -245,8 +241,7 @@ abstract final class CurlParser {
     } on SocketException catch (e) {
       throw NetworkException(
         message: 'Could not connect to server: ${e.message}.',
-        hint:
-            'Verify the URL is correct and the server is reachable from this '
+        hint: 'Verify the URL is correct and the server is reachable from this '
             'machine.',
       );
     } catch (e) {
@@ -269,9 +264,7 @@ abstract final class CurlParser {
     bool escape = false;
 
     // Normalise line continuations
-    final normalized = cmd
-        .replaceAll('\\\n', ' ')
-        .replaceAll('\\\r\n', ' ');
+    final normalized = cmd.replaceAll('\\\n', ' ').replaceAll('\\\r\n', ' ');
 
     for (int i = 0; i < normalized.length; i++) {
       final char = normalized[i];

@@ -46,8 +46,7 @@ Future<void> runCurlCommand({
 
   final endpoint = Uri.parse(curlReq.url).path;
   final methods = [curlReq.method];
-  final requestJson =
-      curlReq.body != null ? jsonDecode(curlReq.body!) : null;
+  final requestJson = curlReq.body != null ? jsonDecode(curlReq.body!) : null;
 
   // ── Scaffold directories ───────────────────────────────────────────────────
   final scaffolder = DirectoryScaffolder(featureName: featureName);
@@ -55,8 +54,7 @@ Future<void> runCurlCommand({
   final isFlutter = scaffolder.isFlutterProject();
   logger.info('Package  : $packageName (Flutter: $isFlutter)');
 
-  final dirProgress =
-      logger.progress('Scaffolding DDD directory structure');
+  final dirProgress = logger.progress('Scaffolding DDD directory structure');
   final Map<String, Directory> directories;
   try {
     directories = scaffolder.scaffold(withDebugView: withDebugView);
@@ -120,6 +118,5 @@ Future<void> runCurlCommand({
     await Runner.runBuildRunner(isFlutter: isFlutter);
   }
 
-  logger.success(
-      '\nCURL scaffold complete! Files in: $featurePath/');
+  logger.success('\nCURL scaffold complete! Files in: $featurePath/');
 }

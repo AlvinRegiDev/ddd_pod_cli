@@ -41,8 +41,8 @@ final class DddLogger {
     final level = quiet
         ? Level.error
         : verbose
-        ? Level.verbose
-        : Level.info;
+            ? Level.verbose
+            : Level.info;
     _instance = DddLogger._(Logger(level: level));
   }
 

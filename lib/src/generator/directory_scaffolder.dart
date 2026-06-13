@@ -35,8 +35,8 @@ final class DirectoryScaffolder {
   String getHostPackageName() {
     if (_cachedPackageName != null) return _cachedPackageName!;
     final (content, _) = _readPubspec();
-    final match = RegExp(r'^name:\s+(\S+)', multiLine: true)
-        .firstMatch(content);
+    final match =
+        RegExp(r'^name:\s+(\S+)', multiLine: true).firstMatch(content);
     if (match == null) {
       throw const ConfigException(
         message: 'Could not extract package name from pubspec.yaml.',
@@ -119,8 +119,7 @@ final class DirectoryScaffolder {
     };
 
     if (withDebugView) {
-      final presentationDir =
-          Directory(p.join(featurePath, 'presentation'));
+      final presentationDir = Directory(p.join(featurePath, 'presentation'));
       _createDir(presentationDir);
       dirs['presentation'] = presentationDir;
     }
@@ -145,12 +144,10 @@ final class DirectoryScaffolder {
       'riverpod_generator',
     ];
 
-    final missingDeps = requiredDeps
-        .where((dep) => !pubspecContent.contains(dep))
-        .toList();
-    final missingDevDeps = requiredDevDeps
-        .where((dep) => !pubspecContent.contains(dep))
-        .toList();
+    final missingDeps =
+        requiredDeps.where((dep) => !pubspecContent.contains(dep)).toList();
+    final missingDevDeps =
+        requiredDevDeps.where((dep) => !pubspecContent.contains(dep)).toList();
 
     if (missingDeps.isEmpty && missingDevDeps.isEmpty) return;
 
@@ -159,14 +156,12 @@ final class DirectoryScaffolder {
       '⚠️  Target project pubspec.yaml is missing recommended packages:',
     );
     if (missingDeps.isNotEmpty) {
-      sb.writeln(
-          '   Dependencies   : ${missingDeps.join(", ")}');
+      sb.writeln('   Dependencies   : ${missingDeps.join(", ")}');
       sb.writeln(
           '   Add with       : flutter pub add ${missingDeps.join(" ")}');
     }
     if (missingDevDeps.isNotEmpty) {
-      sb.writeln(
-          '   Dev deps       : ${missingDevDeps.join(", ")}');
+      sb.writeln('   Dev deps       : ${missingDevDeps.join(", ")}');
       sb.writeln(
           '   Add with       : flutter pub add -d ${missingDevDeps.join(" ")}');
     }
@@ -177,16 +172,13 @@ final class DirectoryScaffolder {
 
   /// Read pubspec.yaml content and its absolute path.
   (String content, String path) _readPubspec() {
-    final pubspecPath =
-        p.join(Directory.current.path, 'pubspec.yaml');
+    final pubspecPath = p.join(Directory.current.path, 'pubspec.yaml');
     final pubspecFile = File(pubspecPath);
     if (!pubspecFile.existsSync()) {
       throw DddFileSystemException(
-        message:
-            'Could not find pubspec.yaml in the current working directory '
+        message: 'Could not find pubspec.yaml in the current working directory '
             '(${Directory.current.path}).',
-        hint:
-            'Run ddd_pod_cli from the root of a Flutter/Dart project.',
+        hint: 'Run ddd_pod_cli from the root of a Flutter/Dart project.',
         path: pubspecPath,
       );
     }
@@ -200,8 +192,7 @@ final class DirectoryScaffolder {
     } catch (e) {
       throw DddFileSystemException(
         message: 'Failed to create directory: ${dir.path}\n$e',
-        hint:
-            'Check that you have write permissions to the target directory.',
+        hint: 'Check that you have write permissions to the target directory.',
         path: dir.path,
       );
     }

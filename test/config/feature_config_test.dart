@@ -115,6 +115,13 @@ void main() {
         }).providerType,
         ProviderType.futureProvider,
       );
+      expect(
+        FeatureConfig.fromJson({
+          'feature_name': 'A',
+          'provider_type': 'provider',
+        }).providerType,
+        ProviderType.provider,
+      );
     });
 
     test('parses type_overrides map', () {

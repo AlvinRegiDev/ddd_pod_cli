@@ -47,7 +47,7 @@ Future<void> runInitCommand({
     '// methods': 'HTTP methods. Valid values: GET, POST, PUT, PATCH, DELETE.',
     'provider_type': 'async_notifier',
     '// provider_type':
-        'Riverpod provider type: notifier | async_notifier | future_provider.',
+        'Riverpod provider type: notifier | async_notifier | future_provider | stream_notifier | stream_provider.',
     'get_response_dto': {
       'id': 1,
       'title': 'Example title',
@@ -74,6 +74,30 @@ Future<void> runInitCommand({
     'offline_cache': false,
     '// offline_cache':
         'Set to true to generate SharedPreferences offline cache layer.',
+    'toDomain_fallback': 'defaults',
+    '// toDomain_fallback':
+        'Fallback strategy for DTO toDomain mapping. Valid values: defaults | nullable.',
+    'family_param': null,
+    '// family_param':
+        'Optional family parameter configuration, e.g. {"name": "id", "type": "int"}.',
+    'keep_alive': false,
+    '// keep_alive':
+        'Whether the Riverpod provider should keep its state alive when not listened to.',
+    'combined_providers': <dynamic>[],
+    '// combined_providers':
+        'Derived/combined providers list, e.g. [{"name": "filteredList", "type": "dynamic", "dependencies": ["anotherProvider"]}].',
+    'listen_providers': <dynamic>[],
+    '// listen_providers':
+        'List of provider names to listen to inside this notifier for side effects.',
+    'pagination_config': null,
+    '// pagination_config':
+        'Pagination strategy config, e.g. {"type": "offset", "cursor_param": "offset", "cursor_response_key": "next_offset"}.',
+    'response_root': null,
+    '// response_root':
+        'Target root property/envelope in API response, e.g. "data" or "data.items".',
+    'use_custom_state': false,
+    '// use_custom_state':
+        'Set to true to generate a custom Freezed Union state (Initial, Loading, Data, Empty, Error) instead of raw model.',
     'validation_rules': {
       'title': {
         'required': true,
@@ -90,6 +114,31 @@ Future<void> runInitCommand({
     },
     '// success_response':
         'Used to populate mock data in generated unit tests.',
+    'cache_ttl_seconds': 0,
+    '// cache_ttl_seconds': 'Optional cache TTL in seconds (0 = no expiry).',
+    'retry_config': {
+      'max_attempts': 3,
+      'delay_ms': 1000,
+    },
+    '// retry_config':
+        'Configure request retries with exponential backoff delay.',
+    'search_config': {
+      'min_chars': 3,
+      'debounce_ms': 300,
+      'throttle_ms': 0,
+    },
+    '// search_config': 'Debounce/throttle config for search query operations.',
+    'stream_config': {
+      'type': 'polling',
+      'poll_interval_seconds': 10,
+    },
+    '// stream_config':
+        'Real-time sync configuration (websocket, sse, polling).',
+    'offline_mutation_queue': false,
+    '// offline_mutation_queue':
+        'Set to true to queue write mutations when offline.',
+    'feature_dependencies': <String>[],
+    '// feature_dependencies': 'List of feature names this feature depends on.',
   };
 
   final jsonStr = const JsonEncoder.withIndent('  ').convert(templateJson);

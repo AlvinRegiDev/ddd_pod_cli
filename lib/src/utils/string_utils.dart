@@ -170,4 +170,16 @@ abstract final class StringUtils {
     if (RegExp(r'^[0-9]').hasMatch(trimmed)) return 'value$trimmed';
     return trimmed;
   }
+
+  /// Derive the Riverpod provider name from a class name.
+  /// Strips trailing 'Notifier' or 'Controller' and appends 'Provider' in camelCase.
+  static String deriveProviderName(String className) {
+    var base = className;
+    if (base.endsWith('Notifier')) {
+      base = base.substring(0, base.length - 'Notifier'.length);
+    } else if (base.endsWith('Controller')) {
+      base = base.substring(0, base.length - 'Controller'.length);
+    }
+    return '${snakeToCamel(base)}Provider';
+  }
 }

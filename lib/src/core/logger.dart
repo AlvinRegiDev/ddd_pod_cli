@@ -15,7 +15,12 @@ import 'package:mason_logger/mason_logger.dart';
 ///
 /// Initialised by `main()` via [DddLogger.init] before any other code runs.
 /// All subsystems import and use this directly.
-DddLogger get logger => DddLogger._instance;
+DddLogger get logger {
+  if (DddLogger._instance == null) {
+    DddLogger.init(quiet: true);
+  }
+  return DddLogger._instance!;
+}
 
 /// Convenience typedef so call-sites can write `Progress` without importing
 /// mason_logger directly.
@@ -27,7 +32,7 @@ typedef DddProgress = Progress;
 final class DddLogger {
   DddLogger._(this._inner);
 
-  static late DddLogger _instance;
+  static DddLogger? _instance;
 
   final Logger _inner;
 

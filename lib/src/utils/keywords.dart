@@ -110,7 +110,7 @@ abstract final class Keywords {
   /// - Otherwise, returns [name] unchanged.
   static String getSafeName(String name) {
     if (name.isEmpty) return 'unnamedField';
-    if (isKeyword(name)) return '${name}Value';
+    if (isKeyword(name)) return '${name}_';
     final firstChar = name[0];
     if (RegExp(r'[0-9]').hasMatch(firstChar)) return 'value$name';
     return name;

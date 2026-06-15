@@ -176,7 +176,7 @@ void main() {
       // The domain model code may contain Observed values comment for status
       // (either as a hint or within nested models)
       expect(domainCode, isNotEmpty);
-      expect(domainCode.contains('// GENERATED CODE'), isTrue);
+      expect(domainCode.contains('// Observed values:'), isTrue);
     });
 
     test('path parameters are correctly interpolated in endpoint', () {
@@ -195,6 +195,116 @@ void main() {
       final url = generator.getInterpolatedEndpoint();
       expect(url, contains(r'$postId'));
       expect(url, contains(r'$commentId'));
+    });
+
+    test('stream provider and notifier return types and codes', () {
+      final parser = JsonParser(
+        featureName: 'Feed',
+        responseJson: {'id': 1, 'text': 'post'},
+        providerType: 'stream_provider',
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'app',
+        featureName: 'Feed',
+        endpoint: '/feed',
+        methods: ['GET'],
+        streamConfig: {'type': 'websocket'},
+      );
+
+      final remoteCode = generator.generateRemoteDataSourceCode();
+      expect(remoteCode.contains('Stream<FeedDto>'), isTrue);
+      expect(remoteCode.contains('WebSocket.connect'), isTrue);
+
+      final repoCode = generator.generateRepositoryImplCode();
+      expect(
+          repoCode.contains('Stream<Either<FeedFailure, FeedModel>>'), isTrue);
+
+      final notifierCode = generator.generateNotifierCode();
+      expect(notifierCode.contains('Stream<FeedModel> feed('), isTrue);
+    });
+
+    test('retry wrapper method generated when retry_config is set', () {
+      final parser = JsonParser(
+        featureName: 'Job',
+        responseJson: {'id': 1},
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'app',
+        featureName: 'Job',
+        endpoint: '/jobs',
+        methods: ['GET'],
+        retryConfig: {'max_attempts': 5, 'delay_ms': 500},
+      );
+
+      final remoteCode = generator.generateRemoteDataSourceCode();
+      expect(remoteCode.contains('Future<T> _retry<T>'), isTrue);
+      expect(remoteCode.contains('final maxAttempts = 5;'), isTrue);
+    });
+
+    test('429 rateLimitExceeded is generated in repository implementation', () {
+      final parser = JsonParser(
+        featureName: 'Message',
+        responseJson: {'id': 1},
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'app',
+        featureName: 'Message',
+        endpoint: '/messages',
+        methods: ['GET'],
+      );
+
+      final repoCode = generator.generateRepositoryImplCode();
+      expect(repoCode.contains('Failure.rateLimitExceeded'), isTrue);
+    });
+
+    test('offline mutation queue is generated when config is active', () {
+      final parser = JsonParser(
+        featureName: 'Task',
+        responseJson: {'id': 1},
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'app',
+        featureName: 'Task',
+        endpoint: '/tasks',
+        methods: ['GET', 'POST'],
+        offlineMutationQueue: true,
+      );
+
+      final queueCode = generator.generateOfflineQueueCode();
+      expect(queueCode.contains('class TaskOfflineQueue'), isTrue);
+    });
+
+    test(
+        'generateTestOverridesCode generates valid template without escaped variables',
+        () {
+      final parser = JsonParser(
+        featureName: 'Product',
+        responseJson: {'id': 1},
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'shop',
+        featureName: 'Product',
+        endpoint: '/products',
+        methods: ['GET'],
+      );
+
+      final testOverridesCode = generator.generateTestOverridesCode();
+      expect(testOverridesCode.contains(r'$domainImport'), isFalse);
+      expect(testOverridesCode.contains(r'$stateType'), isFalse);
+      expect(testOverridesCode.contains(r'$packageName'), isFalse);
+      expect(testOverridesCode.contains(r'$_snake'), isFalse);
+      expect(testOverridesCode.contains(r'$_pascal'), isFalse);
+      expect(testOverridesCode.contains(r'$_camel'), isFalse);
+      expect(testOverridesCode.contains('class ProductTestOverrides'), isTrue);
+      expect(testOverridesCode.contains('AsyncValue<ProductModel> mockValue'),
+          isTrue);
+      expect(testOverridesCode.contains('IProductRepository mockRepository'),
+          isTrue);
     });
   });
 }

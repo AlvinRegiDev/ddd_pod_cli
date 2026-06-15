@@ -17,6 +17,7 @@
 /// - Feature-specific import paths
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -27,9 +28,10 @@ import 'package:ddd_pod_cli/src/parser/json_parser.dart';
 import 'package:ddd_pod_cli/src/parser/models.dart';
 import 'package:ddd_pod_cli/src/utils/keywords.dart';
 import 'package:ddd_pod_cli/src/utils/string_utils.dart';
+import 'package:ddd_pod_cli/src/utils/import_cycle_detector.dart';
 
 /// Current CLI version — kept in sync with pubspec.yaml.
-const String _kCliVersion = '1.0.0';
+const String _kCliVersion = '1.0.2';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -45,6 +47,21 @@ final class CodeGenerator {
     this.force = false,
     this.successResponse,
     this.failureResponse,
+    this.toDomainFallback = 'defaults',
+    this.familyParam,
+    this.keepAlive = false,
+    this.combinedProviders = const [],
+    this.listenProviders = const [],
+    this.paginationConfig,
+    this.useCustomState = false,
+    this.autoDispose = true,
+    this.dependencies = const [],
+    this.streamConfig,
+    this.retryConfig,
+    this.searchConfig,
+    this.offlineMutationQueue = false,
+    this.featureDependencies = const [],
+    this.cacheTtlSeconds = 0,
   });
 
   final JsonParser parser;
@@ -55,75 +72,132 @@ final class CodeGenerator {
   final bool force;
   final dynamic successResponse;
   final dynamic failureResponse;
+  final String toDomainFallback;
+  final Map<String, String>? familyParam;
+  final bool keepAlive;
+  final List<Map<String, dynamic>> combinedProviders;
+  final List<String> listenProviders;
+  final Map<String, dynamic>? paginationConfig;
+  final bool useCustomState;
+  final bool autoDispose;
+  final List<String> dependencies;
+  final Map<String, dynamic>? streamConfig;
+  final Map<String, dynamic>? retryConfig;
+  final Map<String, dynamic>? searchConfig;
+  final bool offlineMutationQueue;
+  final List<String> featureDependencies;
+
+  /// Cache TTL in seconds (0 = no expiry). Wired from [FeatureConfig.cacheTtlSeconds].
+  final int cacheTtlSeconds;
 
   // ── Write orchestration ────────────────────────────────────────────────────
 
   /// Generate and write all feature files into the provided [directories] map.
   void writeToFiles(Map<String, Directory> directories) {
     final snake = _snake;
+    final generated = <String, String>{};
+
+    void addFile(String path, String content) {
+      generated[path] = content;
+    }
 
     // ── application/ ──────────────────────────────────────────────────────
     final appDir = directories['application']!;
-    safeWriteToFile(
-        p.join(appDir.path, '${snake}_state.dart'), generateStateCode());
-    safeWriteToFile(
+    addFile(p.join(appDir.path, '${snake}_state.dart'), generateStateCode());
+    addFile(
         p.join(appDir.path, '${snake}_notifier.dart'), generateNotifierCode());
     if (parser.requestJson != null) {
-      safeWriteToFile(p.join(appDir.path, '${snake}_form_state.dart'),
+      addFile(p.join(appDir.path, '${snake}_form_state.dart'),
           generateFormStateCode());
-      safeWriteToFile(p.join(appDir.path, '${snake}_form_notifier.dart'),
+      addFile(p.join(appDir.path, '${snake}_form_notifier.dart'),
           generateFormNotifierCode());
     }
-    safeWriteToFile(
+    addFile(p.join(appDir.path, '${snake}_derived_providers.dart'),
+        generateDerivedProvidersCode());
+    addFile(
         p.join(appDir.path, 'providers.dart'), generateProvidersBarrelCode());
 
     // ── domain/ ───────────────────────────────────────────────────────────
     final domainDir = directories['domain']!;
     if (parser.domainClasses.isNotEmpty) {
-      safeWriteToFile(p.join(domainDir.path, '${snake}_model.dart'),
+      addFile(p.join(domainDir.path, '${snake}_model.dart'),
           generateDomainModelCode());
     }
-    safeWriteToFile(
+    addFile(
         p.join(domainDir.path, '${snake}_failure.dart'), generateFailureCode());
-    safeWriteToFile(p.join(domainDir.path, 'i_${snake}_repository.dart'),
+    addFile(p.join(domainDir.path, 'i_${snake}_repository.dart'),
         generateIRepositoryCode());
 
     // ── infrastructure/ ──────────────────────────────────────────────────
     final infraDir = directories['infrastructure']!;
     if (parser.responseDtoClasses.isNotEmpty ||
         parser.requestDtoClasses.isNotEmpty) {
-      safeWriteToFile(
-          p.join(infraDir.path, '${snake}_dto.dart'), generateDtoCode());
+      addFile(p.join(infraDir.path, '${snake}_dto.dart'), generateDtoCode());
     }
-    safeWriteToFile(p.join(infraDir.path, '${snake}_remote_data_source.dart'),
+    addFile(p.join(infraDir.path, '${snake}_remote_data_source.dart'),
         generateRemoteDataSourceCode());
-    safeWriteToFile(p.join(infraDir.path, '${snake}_repository_impl.dart'),
+    addFile(p.join(infraDir.path, '${snake}_repository_impl.dart'),
         generateRepositoryImplCode());
-    safeWriteToFile(p.join(infraDir.path, '${snake}_mock_interceptor.dart'),
+    addFile(p.join(infraDir.path, '${snake}_mock_interceptor.dart'),
         generateMockInterceptorCode());
     if (offlineCache) {
-      safeWriteToFile(p.join(infraDir.path, '${snake}_local_data_source.dart'),
+      addFile(p.join(infraDir.path, '${snake}_local_data_source.dart'),
           generateLocalDataSourceCode());
+    }
+    if (offlineMutationQueue) {
+      addFile(p.join(infraDir.path, '${snake}_offline_queue.dart'),
+          generateOfflineQueueCode());
     }
 
     // ── presentation/ ─────────────────────────────────────────────────────
     final presentationDir = directories['presentation'];
     if (presentationDir != null) {
-      safeWriteToFile(p.join(presentationDir.path, '${snake}_debug_page.dart'),
+      addFile(p.join(presentationDir.path, '${snake}_debug_page.dart'),
           generateDebugPageCode());
     }
+
+    // ── observers/ ────────────────────────────────────────────────────────
+    final observersDir =
+        Directory(p.join(Directory.current.path, 'lib', 'src', 'observers'));
+    if (!observersDir.existsSync()) {
+      observersDir.createSync(recursive: true);
+    }
+    addFile(p.join(observersDir.path, 'provider_observer.dart'),
+        generateObserverCode());
+    addFile(p.join(observersDir.path, 'analytics_observer.dart'),
+        generateAnalyticsObserverCode());
+    addFile(p.join(observersDir.path, 'debug_observer.dart'),
+        generateDebugObserverCode());
 
     // ── test/application/ ─────────────────────────────────────────────────
     final testAppDir = directories['test_application'];
     if (testAppDir != null) {
-      safeWriteToFile(p.join(testAppDir.path, '${snake}_notifier_test.dart'),
+      addFile(p.join(testAppDir.path, '${snake}_notifier_test.dart'),
           generateNotifierTestCode());
+      addFile(p.join(testAppDir.path, '${snake}_test_overrides.dart'),
+          generateTestOverridesCode());
     }
 
     // ── Feature barrel ────────────────────────────────────────────────────
     final featurePath = p.dirname(appDir.path);
-    safeWriteToFile(p.join(featurePath, '$snake.dart'),
+    addFile(p.join(featurePath, '$snake.dart'),
         generateFeatureBarrelCode(directories));
+
+    // Run cycle detection before writing
+    final cycles = ImportCycleDetector.detect(generated);
+    if (cycles.isNotEmpty) {
+      logger.warn(
+          'WARNING: Circular dependency cycle(s) detected in generated imports:');
+      for (final cycle in cycles) {
+        final pathStr = cycle.map((pPath) => p.basename(pPath)).join(' -> ');
+        logger.warn('  - $pathStr -> ${p.basename(cycle.first)}');
+      }
+    }
+
+    // Write all files
+    generated.forEach((path, content) {
+      safeWriteToFile(path, content);
+    });
   }
 
   // ── File I/O ──────────────────────────────────────────────────────────────
@@ -143,6 +217,24 @@ final class CodeGenerator {
         _writeFile(file, path, content);
         return;
       }
+      try {
+        final lines = file.readAsLinesSync();
+        if (lines.isNotEmpty) {
+          final hashLine = lines.firstWhere(
+            (l) => l.startsWith('// Config Hash: '),
+            orElse: () => '',
+          );
+          if (hashLine.isNotEmpty) {
+            final existingHash =
+                hashLine.substring('// Config Hash: '.length).trim();
+            if (existingHash == _configHash) {
+              logger.detail('Skipped (unchanged config hash): $path');
+              return;
+            }
+          }
+        }
+      } catch (_) {}
+
       logger.warn('File already exists: $path');
       if (!stdin.hasTerminal) {
         logger.info('Skipped (non-interactive): $path');
@@ -163,15 +255,35 @@ final class CodeGenerator {
   }
 
   void _writeFile(File file, String path, String content) {
+    // Atomic write: write to a sibling .tmp file then rename.
+    // This prevents a corrupt partial file if the process is killed mid-write.
+    final tmpPath = '$path.tmp';
+    final tmpFile = File(tmpPath);
     try {
-      file.writeAsStringSync(content);
+      tmpFile.writeAsStringSync(content);
+      tmpFile.renameSync(path);
       logger.detail('Written: $path');
     } catch (e) {
-      throw DddFileSystemException(
-        message: 'Could not write file: $path\n$e',
-        hint: 'Check that you have write permissions to the target directory.',
-        path: path,
-      );
+      // Fallback to direct write if rename fails (e.g. cross-device link).
+      try {
+        file.writeAsStringSync(content);
+        // Clean up orphaned .tmp if fallback succeeded.
+        if (tmpFile.existsSync()) tmpFile.deleteSync();
+        logger.detail('Written (direct fallback): $path');
+      } catch (e2) {
+        // Clean up orphaned .tmp.
+        if (tmpFile.existsSync()) {
+          try {
+            tmpFile.deleteSync();
+          } catch (_) {}
+        }
+        throw DddFileSystemException(
+          message: 'Could not write file: $path\n$e2',
+          hint:
+              'Check that you have write permissions to the target directory.',
+          path: path,
+        );
+      }
     }
   }
 
@@ -190,15 +302,72 @@ final class CodeGenerator {
   bool get isPaginatedList => parser.isPaginatedList;
   bool get offlineCache => parser.offlineCache;
 
+  String get _riverpodAnnotation {
+    final keep = keepAlive || !autoDispose;
+    final annotationArgs = <String>[];
+    if (keep) {
+      annotationArgs.add('keepAlive: true');
+    }
+    if (dependencies.isNotEmpty) {
+      final depList = dependencies.map(_formatDependency).join(', ');
+      annotationArgs.add('dependencies: [$depList]');
+    }
+    return annotationArgs.isEmpty
+        ? '@riverpod'
+        : '@Riverpod(${annotationArgs.join(', ')})';
+  }
+
+  String _formatDependency(String dep) {
+    if (dep.toLowerCase().endsWith('provider')) {
+      return dep;
+    }
+    final camel = StringUtils.snakeToCamel(dep);
+    return '${camel}Provider';
+  }
+
   // ── File header ───────────────────────────────────────────────────────────
+
+  String get _configHash {
+    final map = {
+      'featureName': featureName,
+      'endpoint': endpoint,
+      'methods': methods,
+      'successResponse': successResponse,
+      'failureResponse': failureResponse,
+      'toDomainFallback': toDomainFallback,
+      'familyParam': familyParam,
+      'keepAlive': keepAlive,
+      'combinedProviders': combinedProviders,
+      'listenProviders': listenProviders,
+      'paginationConfig': paginationConfig,
+      'useCustomState': useCustomState,
+      'autoDispose': autoDispose,
+      'dependencies': dependencies,
+      'streamConfig': streamConfig,
+      'retryConfig': retryConfig,
+      'searchConfig': searchConfig,
+      'offlineMutationQueue': offlineMutationQueue,
+      'featureDependencies': featureDependencies,
+      'cacheTtlSeconds': cacheTtlSeconds,
+    };
+    final jsonStr = jsonEncode(map);
+    int hash = 5381;
+    for (int i = 0; i < jsonStr.length; i++) {
+      hash = ((hash << 5) + hash) + jsonStr.codeUnitAt(i);
+      hash = hash & 0xFFFFFFFF;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
+  }
 
   String _fileHeader({bool editable = false}) {
     final timestamp = DateTime.now().toIso8601String();
+    final hash = _configHash;
     if (editable) {
       return '''
 // GENERATED CODE — Feel free to edit this file.
 // Generated by ddd_pod_cli v$_kCliVersion · Feel free to edit this file.
 // It will not be overwritten unless you run generate with the --force flag.
+// Config Hash: $hash
 // ─────────────────────────────────────────────────────────────────────────────
 // ignore_for_file: type=lint, invalid_annotation_target
 ''';
@@ -206,6 +375,7 @@ final class CodeGenerator {
     return '''
 // GENERATED CODE — DO NOT MODIFY BY HAND
 // ddd_pod_cli v$_kCliVersion · generated at $timestamp
+// Config Hash: $hash
 // ─────────────────────────────────────────────────────────────────────────────
 // ignore_for_file: type=lint, invalid_annotation_target
 ''';
@@ -280,23 +450,62 @@ final class CodeGenerator {
   }
 
   String _repositoryReturnType(String method) {
+    final isSync = parser.providerType == 'provider';
+    final isStream = parser.providerType == 'stream_provider' ||
+        parser.providerType == 'stream_notifier';
     if (method.toUpperCase() == 'GET') {
-      return 'Future<Either<${_pascal}Failure, $_dataType>>';
+      if (isStream) {
+        return 'Stream<Either<${_pascal}Failure, $_dataType>>';
+      }
+      return isSync
+          ? 'Either<${_pascal}Failure, $_dataType>'
+          : 'Future<Either<${_pascal}Failure, $_dataType>>';
     }
-    return 'Future<Either<${_pascal}Failure, Unit>>';
+    return isSync
+        ? 'Either<${_pascal}Failure, Unit>'
+        : 'Future<Either<${_pascal}Failure, Unit>>';
   }
 
   String _remoteSourceReturnType(String method) {
     if (method.toUpperCase() != 'GET') return 'void';
-    if (parser.responseDtoClasses.isNotEmpty) {
-      return parser.isTopLevelList ? 'List<${_pascal}Dto>' : '${_pascal}Dto';
-    }
-    return parser.isTopLevelList
-        ? 'List<${parser.responseDtoType}>'
-        : parser.responseDtoType;
+    final isStream = parser.providerType == 'stream_provider' ||
+        parser.providerType == 'stream_notifier';
+    final baseType = () {
+      if (parser.responseDtoClasses.isNotEmpty) {
+        return parser.isTopLevelList ? 'List<${_pascal}Dto>' : '${_pascal}Dto';
+      }
+      return parser.isTopLevelList
+          ? 'List<${parser.responseDtoType}>'
+          : parser.responseDtoType;
+    }();
+    return isStream ? 'Stream<$baseType>' : baseType;
   }
 
-  String _repositoryParams({bool isWrite = false}) {
+  String _streamParseBodySnippet(bool hasDto, {bool isDataLocalVar = false}) {
+    final varName = isDataLocalVar ? 'decoded' : 'decoded';
+    final sb = StringBuffer();
+    if (hasDto) {
+      if (parser.isTopLevelList) {
+        sb.writeln('            final list = $varName as List<dynamic>;');
+        sb.writeln(
+            '            yield list.map((e) => ${_pascal}Dto.fromJson(e as Map<String, dynamic>)).toList();');
+      } else {
+        sb.writeln(
+            '            yield ${_pascal}Dto.fromJson($varName as Map<String, dynamic>);');
+      }
+    } else {
+      if (parser.isTopLevelList) {
+        sb.writeln(
+            '            yield ($varName as List<dynamic>).cast<${parser.responseDtoType}>();');
+      } else {
+        sb.writeln('            yield $varName as ${parser.responseDtoType};');
+      }
+    }
+    return sb.toString();
+  }
+
+  String _repositoryParams(
+      {bool isWrite = false, bool withCancelToken = true}) {
     final params = <String>[];
     pathParamsMap.forEach((_, name) => params.add('required String $name'));
     if (!isWrite && isPaginatedList) {
@@ -305,16 +514,22 @@ final class CodeGenerator {
     if (isWrite && parser.requestJson != null) {
       params.add('required ${_pascal}RequestDto request');
     }
+    if (withCancelToken) {
+      params.add('CancelToken? cancelToken');
+    }
     return params.isEmpty ? '' : '{${params.join(', ')}}';
   }
 
-  String _remoteCallArgs({bool isWrite = false}) {
+  String _remoteCallArgs({bool isWrite = false, bool withCancelToken = true}) {
     final args = <String>[];
     pathParamsMap.forEach((_, name) => args.add('$name: $name'));
     if (!isWrite && isPaginatedList) {
       args.addAll(['page: page', 'limit: limit']);
     }
     if (isWrite && parser.requestJson != null) args.add('request: request');
+    if (withCancelToken) {
+      args.add('cancelToken: cancelToken');
+    }
     return args.join(', ');
   }
 
@@ -336,6 +551,12 @@ final class CodeGenerator {
   String _repoArgsNextPage() {
     final base = _notifierCallArgs();
     const paging = 'page: nextPage, limit: 10';
+    return base.isNotEmpty ? '$base, $paging' : paging;
+  }
+
+  String _repoArgsPrevPage() {
+    final base = _notifierCallArgs();
+    const paging = 'page: prevPage, limit: 10';
     return base.isNotEmpty ? '$base, $paging' : paging;
   }
 
@@ -430,10 +651,113 @@ sealed class ${_pascal}State with _\$${_pascal}State {
       case 'future_provider':
         return _futureProviderCode(
             buildParams, callArgs, importModel, importRepoImpl);
+      case 'provider':
+        return _providerCode(
+            buildParams, callArgs, importModel, importRepoImpl);
+      case 'stream_provider':
+        return _streamProviderCode(
+            buildParams, callArgs, importModel, importRepoImpl);
+      case 'stream_notifier':
+        return _streamNotifierCode(
+            buildParams, callArgs, importModel, importRepoImpl, importDto);
       default:
         return _notifierCode(
             buildParams, callArgs, importModel, importRepoImpl, importDto);
     }
+  }
+
+  String _streamProviderCode(
+    String buildParams,
+    String callArgs,
+    String importModel,
+    String importRepoImpl,
+  ) {
+    final paramsArg = pathParamsMap.isEmpty
+        ? ''
+        : ', ${pathParamsMap.values.map((v) => 'String $v').join(', ')}';
+    return '''
+${_fileHeader(editable: true)}
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
+$importModel$importRepoImpl
+part '${_snake}_notifier.g.dart';
+
+$_riverpodAnnotation
+Stream<$_dataType> $_camel(Ref ref$paramsArg) async* {
+  final repository = ref.watch(${_camel}RepositoryProvider);
+  final stream = repository.get$_pascal($callArgs);
+  await for (final result in stream) {
+    yield result.fold(
+      (failure) => throw failure,
+      (data) => data,
+    );
+  }
+}
+''';
+  }
+
+  String _streamNotifierCode(
+    String buildParams,
+    String callArgs,
+    String importModel,
+    String importRepoImpl,
+    String importDto,
+  ) {
+    return '''
+${_fileHeader(editable: true)}
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
+$importModel$importRepoImpl$importDto
+part '${_snake}_notifier.g.dart';
+
+$_riverpodAnnotation
+class ${_pascal}Notifier extends _\$${_pascal}Notifier {
+  @override
+  Stream<$_dataType> build($buildParams) async* {
+    final repository = ref.watch(${_camel}RepositoryProvider);
+    final stream = repository.get$_pascal($callArgs);
+    await for (final result in stream) {
+      yield result.fold(
+        (failure) => throw failure,
+        (data) => data,
+      );
+    }
+  }
+
+  ${_submitMethodCode()}
+}
+''';
+  }
+
+  String _providerCode(
+    String buildParams,
+    String callArgs,
+    String importModel,
+    String importRepoImpl,
+  ) {
+    final paramsArg = pathParamsMap.isEmpty
+        ? ''
+        : ', ${pathParamsMap.values.map((v) => 'String $v').join(', ')}';
+    return '''
+${_fileHeader(editable: true)}
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
+$importModel$importRepoImpl
+part '${_snake}_notifier.g.dart';
+
+$_riverpodAnnotation
+$_dataType $_camel(Ref ref$paramsArg) {
+  final repository = ref.watch(${_camel}RepositoryProvider);
+  final result = repository.get$_pascal($callArgs);
+  return result.fold(
+    (failure) => throw failure,
+    (data) => data,
+  );
+}
+''';
   }
 
   String _asyncNotifierCode(
@@ -454,7 +778,7 @@ import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart
 $importModel$importRepoImpl$importDto
 part '${_snake}_notifier.g.dart';
 
-@riverpod
+$_riverpodAnnotation
 class ${_pascal}Notifier extends _\$${_pascal}Notifier {
   int _page = 1;
   bool _hasReachedMax = false;
@@ -500,7 +824,56 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
           return AsyncData(state.value ?? const []);
         }
         _page = nextPage;
-        return AsyncData([...state.value ?? const [], ...newData]);
+        final list = state.value ?? const [];
+        final existingIds = list.map((item) {
+          try {
+            return (item as dynamic).id;
+          } catch (_) {
+            return item;
+          }
+        }).toSet();
+        final uniqueNewData = newData.where((item) {
+          try {
+            return !existingIds.contains((item as dynamic).id);
+          } catch (_) {
+            return true;
+          }
+        }).toList();
+        return AsyncData([...list, ...uniqueNewData] as $_dataType);
+      },
+    );
+  }
+
+  /// Fetch the previous page and prepend results to the current list.
+  Future<void> fetchPreviousPage() async {
+    if (_page <= 1 || state.isLoading) return;
+    state = AsyncLoading<$_dataType>().copyWithPrevious(state);
+    final repository = ref.read(${_camel}RepositoryProvider);
+    final prevPage = _page - 1;
+    final result = await repository.get$_pascal(${_repoArgsPrevPage()});
+    state = result.fold(
+      (failure) => AsyncError(failure, StackTrace.current),
+      (newData) {
+        if (newData.isNotEmpty) {
+          _page = prevPage;
+          final list = state.value ?? const [];
+          final existingIds = list.map((item) {
+            try {
+              return (item as dynamic).id;
+            } catch (_) {
+              return item;
+            }
+          }).toSet();
+          final uniqueNewData = newData.where((item) {
+            try {
+              return !existingIds.contains((item as dynamic).id);
+            } catch (_) {
+              return true;
+            }
+          }).toList();
+          return AsyncData([...uniqueNewData, ...list] as $_dataType);
+        }
+        return AsyncData(state.value ?? const []);
       },
     );
   }
@@ -520,7 +893,7 @@ import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart
 $importModel$importRepoImpl$importDto
 part '${_snake}_notifier.g.dart';
 
-@riverpod
+$_riverpodAnnotation
 class ${_pascal}Notifier extends _\$${_pascal}Notifier {
   @override
   FutureOr<$_dataType> build($buildParams) async {
@@ -566,7 +939,7 @@ import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart
 $importModel$importRepoImpl
 part '${_snake}_notifier.g.dart';
 
-@riverpod
+$_riverpodAnnotation
 Future<$_dataType> $_camel(Ref ref$paramsArg) async {
   final repository = ref.watch(${_camel}RepositoryProvider);
   final result = await repository.get$_pascal($callArgs);
@@ -595,7 +968,7 @@ $importModel${importRepoImpl}import '${_snake}_state.dart';
 $importDto
 part '${_snake}_notifier.g.dart';
 
-@riverpod
+$_riverpodAnnotation
 class ${_pascal}Notifier extends _\$${_pascal}Notifier {
   int _page = 1;
   bool _hasReachedMax = false;
@@ -632,7 +1005,54 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
           _hasReachedMax = true;
         } else {
           _page = nextPage;
-          state = ${_pascal}State.data([...currentState.data, ...newData]);
+          final existingIds = currentState.data.map((item) {
+            try {
+              return (item as dynamic).id;
+            } catch (_) {
+              return item;
+            }
+          }).toSet();
+          final uniqueNewData = newData.where((item) {
+            try {
+              return !existingIds.contains((item as dynamic).id);
+            } catch (_) {
+              return true;
+            }
+          }).toList();
+          state = ${_pascal}State.data([...currentState.data, ...uniqueNewData]);
+        }
+      },
+    );
+  }
+
+  /// Fetch the previous page and prepend to existing data.
+  Future<void> fetchPreviousPage() async {
+    if (_page <= 1) return;
+    final currentState = state;
+    if (currentState is! ${_pascal}StateData) return;
+    final repository = ref.read(${_camel}RepositoryProvider);
+    final prevPage = _page - 1;
+    final result = await repository.get$_pascal(${_repoArgsPrevPage()});
+    result.fold(
+      (failure) => state = ${_pascal}State.error(failure),
+      (newData) {
+        if (newData.isNotEmpty) {
+          _page = prevPage;
+          final existingIds = currentState.data.map((item) {
+            try {
+              return (item as dynamic).id;
+            } catch (_) {
+              return item;
+            }
+          }).toSet();
+          final uniqueNewData = newData.where((item) {
+            try {
+              return !existingIds.contains((item as dynamic).id);
+            } catch (_) {
+              return true;
+            }
+          }).toList();
+          state = ${_pascal}State.data([...uniqueNewData, ...currentState.data]);
         }
       },
     );
@@ -652,7 +1072,7 @@ $importModel${importRepoImpl}import '${_snake}_state.dart';
 $importDto
 part '${_snake}_notifier.g.dart';
 
-@riverpod
+$_riverpodAnnotation
 class ${_pascal}Notifier extends _\$${_pascal}Notifier {
   @override
   ${_pascal}State build($buildParams) => const ${_pascal}State.initial();
@@ -710,6 +1130,24 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
       return build($buildCallArgs);
     });
   }
+
+  /// Submit form data with optimistic update and rollback on failure.
+  Future<void> submitWithRollback({$params}) async {
+    final previousState = state;
+    final repository = ref.read(${_camel}RepositoryProvider);
+    final result = await repository.$repoMethod($repoArgs);
+    result.fold(
+      (failure) {
+        state = previousState; // Rollback
+      },
+      (_) {},
+    );
+  }
+
+  /// Reset the provider state.
+  void reset() {
+    ref.invalidateSelf();
+  }
 ''';
     } else if (parser.providerType == 'notifier') {
       return '''
@@ -722,6 +1160,38 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
       (failure) => state = ${_pascal}State.error(failure),
       (_) => fetch$_pascal(),
     );
+  }
+
+  /// Submit form data with optimistic update and rollback on failure.
+  Future<void> submitWithRollback({$params}) async {
+    final previousState = state;
+    final repository = ref.read(${_camel}RepositoryProvider);
+    final result = await repository.$repoMethod($repoArgs);
+    result.fold(
+      (failure) {
+        state = previousState; // Rollback
+      },
+      (_) {},
+    );
+  }
+
+  /// Reset the provider state.
+  void reset() {
+    state = const ${_pascal}State.initial();
+  }
+''';
+    } else if (parser.providerType == 'stream_notifier') {
+      return '''
+  /// Submit form data to the remote source.
+  Future<bool> submit({$params}) async {
+    final repository = ref.read(${_camel}RepositoryProvider);
+    final result = await repository.$repoMethod($repoArgs);
+    return result.isRight();
+  }
+
+  /// Reset the provider state.
+  void reset() {
+    ref.invalidateSelf();
   }
 ''';
     }
@@ -772,19 +1242,50 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 part '${_snake}_failure.freezed.dart';
 
-/// Represents all possible failure states for the $_pascal feature.
+  /// Represents all possible failure states for the $_pascal feature.
 @freezed
 sealed class ${_pascal}Failure with _\$${_pascal}Failure {
-  /// The server returned an error response.
+  /// The server returned a generic error response (5xx).
   const factory ${_pascal}Failure.serverError([String? message]) =
       _ServerError;
 
-  /// A network-level error occurred (timeout, no connection, etc.).
+  /// A network-level error occurred (no connection, dropped socket, etc.).
   const factory ${_pascal}Failure.networkError() = _NetworkError;
+
+  /// A request timed out before receiving a response.
+  const factory ${_pascal}Failure.timeoutFailure() = _TimeoutFailure;
+
+  /// The server returned HTTP 401 Unauthorized.
+  const factory ${_pascal}Failure.unauthorizedFailure([String? message]) =
+      _UnauthorizedFailure;
+
+  /// The server returned HTTP 403 Forbidden.
+  const factory ${_pascal}Failure.forbiddenFailure([String? message]) =
+      _ForbiddenFailure;
+
+  /// The server returned HTTP 404 Not Found.
+  const factory ${_pascal}Failure.notFoundFailure([String? message]) =
+      _NotFoundFailure;
+
+  /// The server returned HTTP 422 Unprocessable Entity (server-side validation).
+  ///
+  /// [fieldErrors] maps individual field names to their server-side error messages.
+  const factory ${_pascal}Failure.validationFailure([
+    String? message,
+    Map<String, String>? fieldErrors,
+  ]) = _ValidationFailure;
 
   /// An unexpected error occurred that was not anticipated.
   const factory ${_pascal}Failure.unexpectedError([String? message]) =
       _UnexpectedError;
+
+  /// The server returned a 429 Rate Limit Exceeded error.
+  const factory ${_pascal}Failure.rateLimitExceeded([String? message]) =
+      _RateLimitExceeded;
+
+  /// A local cache read or write operation failed.
+  const factory ${_pascal}Failure.cacheFailure([String? message]) =
+      _CacheFailure;
 }
 ''';
   }
@@ -794,6 +1295,7 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
   String generateIRepositoryCode() {
     final sb = StringBuffer()..write(_fileHeader(editable: true));
     sb.writeln("import 'package:fpdart/fpdart.dart';");
+    sb.writeln("import 'package:dio/dio.dart';");
     sb.writeln("import '${_snake}_failure.dart';");
     if (parser.domainClasses.isNotEmpty) {
       sb.writeln("import '${_snake}_model.dart';");
@@ -948,6 +1450,12 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
         ? "import 'package:$packageName/features/$_snake/infrastructure/${_snake}_dto.dart';\n"
         : '';
 
+    final isStreamProvider = parser.providerType == 'stream_provider' ||
+        parser.providerType == 'stream_notifier';
+    final streamImports = isStreamProvider
+        ? "import 'dart:async';\nimport 'dart:convert';\nimport 'dart:io';\n"
+        : '';
+
     final sb = StringBuffer();
     for (final method in methods) {
       final methodName = _methodName(method);
@@ -956,44 +1464,156 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
       final endpointStr = getInterpolatedEndpoint();
       final dioMethod = method.toLowerCase();
 
-      sb.writeln('  Future<$returnType> $methodName($params) async {');
+      final isSync = parser.providerType == 'provider';
+      final isStream = isStreamProvider && method.toUpperCase() == 'GET';
+
+      if (isStream) {
+        final streamType = streamConfig?['type']?.toString() ?? 'polling';
+        sb.writeln('  $returnType $methodName($params) async* {');
+        sb.writeln('    final endpoint = $endpointStr;');
+        if (streamType == 'websocket') {
+          final parseBody = _streamParseBodySnippet(hasDto);
+          sb.writeln('''
+    final wsUrl = endpoint.startsWith('https')
+        ? endpoint.replaceFirst('https', 'wss')
+        : endpoint.startsWith('http')
+            ? endpoint.replaceFirst('http', 'ws')
+            : endpoint;
+    int attempt = 0;
+    while (true) {
+      try {
+        final socket = await WebSocket.connect(wsUrl);
+        attempt = 0;
+        await for (final message in socket) {
+          if (message is String) {
+            final decoded = jsonDecode(message);
+$parseBody
+          }
+        }
+      } catch (e) {
+        attempt++;
+        final backoff = Duration(seconds: 1 << attempt);
+        await Future.delayed(backoff);
+      }
+    }''');
+        } else if (streamType == 'sse') {
+          final parseBody = _streamParseBodySnippet(hasDto);
+          sb.writeln('''
+    int attempt = 0;
+    while (true) {
+      try {
+        final response = await _dio.get<ResponseBody>(
+          endpoint,
+          options: Options(
+            responseType: ResponseType.stream,
+            headers: {
+              'Accept': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+            },
+          ),
+        );
+        attempt = 0;
+        await for (final line in response.data!.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())) {
+          if (line.startsWith('data:')) {
+            final dataStr = line.substring(5).trim();
+            if (dataStr.isEmpty) continue;
+            final decoded = jsonDecode(dataStr);
+$parseBody
+          }
+        }
+      } catch (e) {
+        attempt++;
+        final backoff = Duration(seconds: 1 << attempt);
+        await Future.delayed(backoff);
+      }
+    }''');
+        } else {
+          final parseBody =
+              _streamParseBodySnippet(hasDto, isDataLocalVar: true);
+          sb.writeln('''
+    final interval = const Duration(seconds: 5);
+    while (true) {
+      try {
+        final response = await _dio.get(endpoint, cancelToken: cancelToken);
+        final decoded = response.data;
+        if (decoded != null) {
+$parseBody
+        }
+      } catch (e) {
+        // Ignored in polling
+      }
+      await Future.delayed(interval);
+    }''');
+        }
+        sb.writeln('  }');
+        sb.writeln();
+        continue;
+      }
+
+      final sig = isSync
+          ? '  $returnType $methodName($params) {'
+          : '  Future<$returnType> $methodName($params) async {';
+      sb.writeln(sig);
       sb.writeln('    try {');
 
       if (method.toUpperCase() == 'GET') {
         final queryParams = isPaginatedList
             ? ", queryParameters: {'page': page, 'limit': limit}"
             : '';
-        sb.writeln(
-            '      final response = await _dio.get($endpointStr$queryParams);');
-        sb.writeln('      if (response.data != null) {');
+        final awaitExpr = isSync ? '' : 'await ';
+        if (retryConfig != null && !isSync) {
+          sb.writeln(
+              '      final response = await _retry(() => _dio.get($endpointStr$queryParams, cancelToken: cancelToken));');
+        } else {
+          sb.writeln(
+              '      final response = ${awaitExpr}_dio.get($endpointStr$queryParams, cancelToken: cancelToken);');
+        }
+        if (isSync) {
+          sb.writeln('      final data = (response as dynamic).data;');
+        } else {
+          sb.writeln('      final data = response.data;');
+        }
+        sb.writeln('      if (data != null) {');
         if (hasDto) {
           if (parser.isTopLevelList) {
-            sb.writeln('        final list = response.data as List<dynamic>;');
+            sb.writeln('        final list = data as List<dynamic>;');
             sb.writeln(
                 '        return list.map((e) => ${_pascal}Dto.fromJson(e as Map<String, dynamic>)).toList();');
           } else {
             sb.writeln(
-                '        return ${_pascal}Dto.fromJson(response.data as Map<String, dynamic>);');
+                '        return ${_pascal}Dto.fromJson(data as Map<String, dynamic>);');
           }
         } else {
           if (parser.isTopLevelList) {
             sb.writeln(
-                '        return (response.data as List<dynamic>).cast<${parser.responseDtoType}>();');
+                '        return (data as List<dynamic>).cast<${parser.responseDtoType}>();');
           } else {
-            sb.writeln(
-                '        return response.data as ${parser.responseDtoType};');
+            sb.writeln('        return data as ${parser.responseDtoType};');
           }
         }
         sb.writeln('      }');
-        sb.writeln('      throw DioException(');
-        sb.writeln('        requestOptions: response.requestOptions,');
-        sb.writeln('        response: response,');
-        sb.writeln('        type: DioExceptionType.badResponse,');
-        sb.writeln('      );');
+        if (isSync) {
+          sb.writeln('      throw Exception("Response data is null");');
+        } else {
+          sb.writeln('      throw DioException(');
+          sb.writeln('        requestOptions: response.requestOptions,');
+          sb.writeln('        response: response,');
+          sb.writeln('        type: DioExceptionType.badResponse,');
+          sb.writeln('      );');
+        }
       } else {
         final dataParam =
             _hasRequestBody(method) ? ', data: request.toJson()' : '';
-        sb.writeln('      await _dio.$dioMethod($endpointStr$dataParam);');
+        final awaitExpr = isSync ? '' : 'await ';
+        if (retryConfig != null && !isSync) {
+          sb.writeln(
+              '      await _retry(() => _dio.$dioMethod($endpointStr$dataParam, cancelToken: cancelToken));');
+        } else {
+          sb.writeln(
+              '      ${awaitExpr}_dio.$dioMethod($endpointStr$dataParam, cancelToken: cancelToken);');
+        }
       }
 
       sb.writeln('    } catch (e) {');
@@ -1003,11 +1623,45 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
       sb.writeln();
     }
 
+    if (retryConfig != null) {
+      final maxAttempts = retryConfig?['max_attempts'] as int? ?? 3;
+      final delayMs = retryConfig?['delay_ms'] as int? ?? 1000;
+      sb.writeln('''
+  Future<T> _retry<T>(Future<T> Function() fn) async {
+    int attempts = 0;
+    final maxAttempts = $maxAttempts;
+    final baseDelay = const Duration(milliseconds: $delayMs);
+    while (true) {
+      try {
+        return await fn();
+      } catch (e) {
+        attempts++;
+        if (attempts >= maxAttempts) {
+          rethrow;
+        }
+        // Honour the server's Retry-After header when present (429/503).
+        Duration delay = baseDelay * (1 << (attempts - 1));
+        if (e is DioException) {
+          final retryAfterHeader = e.response?.headers.value('retry-after');
+          if (retryAfterHeader != null) {
+            final seconds = int.tryParse(retryAfterHeader);
+            if (seconds != null && seconds > 0) {
+              delay = Duration(seconds: seconds);
+            }
+          }
+        }
+        await Future.delayed(delay);
+      }
+    }
+  }
+''');
+    }
+
     return '''
 ${_fileHeader(editable: true)}
 import 'package:dio/dio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-$importDto
+$streamImports$importDto
 part '${_snake}_remote_data_source.g.dart';
 
 @riverpod
@@ -1043,15 +1697,23 @@ ${sb.toString()}}
     final importLocalSource = offlineCache
         ? "import 'package:$packageName/features/$_snake/infrastructure/${_snake}_local_data_source.dart';\n"
         : '';
+    final importOfflineQueue = offlineMutationQueue
+        ? "import 'package:$packageName/features/$_snake/infrastructure/${_snake}_offline_queue.dart';\n"
+        : '';
 
     final watchLocal = offlineCache
         ? "  final localDataSource = ref.watch(${_camel}LocalDataSourceProvider);\n"
         : '';
-    final constructLocal = offlineCache ? ', localDataSource' : '';
-    final declareLocal = offlineCache
-        ? '  final ${_pascal}LocalDataSource _localDataSource;\n'
+    final watchOfflineQueue = offlineMutationQueue
+        ? "  final offlineQueue = ref.watch(${_camel}OfflineQueueProvider);\n"
         : '';
-    final initLocal = offlineCache ? ', this._localDataSource' : '';
+
+    final constructLocal =
+        '${offlineCache ? ', localDataSource' : ''}${offlineMutationQueue ? ', offlineQueue' : ''}';
+    final declareLocal =
+        '${offlineCache ? '  final ${_pascal}LocalDataSource _localDataSource;\n' : ''}${offlineMutationQueue ? '  final ${_pascal}OfflineQueue _offlineQueue;\n' : ''}';
+    final initLocal =
+        '${offlineCache ? ', this._localDataSource' : ''}${offlineMutationQueue ? ', this._offlineQueue' : ''}';
 
     final sb = StringBuffer();
 
@@ -1065,17 +1727,23 @@ ${sb.toString()}}
               : 'cached.toDomain()')
           : 'cached';
 
+      final isSync = parser.providerType == 'provider';
+      final awaitExpr = isSync ? '' : 'await ';
       sb.writeln('  @override');
-      sb.writeln(
-          '  Future<Either<${_pascal}Failure, $_dataType?>> getCached$_pascal($paramStr) async {');
+      if (isSync) {
+        sb.writeln(
+            '  Either<${_pascal}Failure, $_dataType?> getCached$_pascal($paramStr) {');
+      } else {
+        sb.writeln(
+            '  Future<Either<${_pascal}Failure, $_dataType?>> getCached$_pascal($paramStr) async {');
+      }
       sb.writeln('    try {');
       sb.writeln(
-          '      final cached = await _localDataSource.getLast$_pascal($callArgs);');
+          '      final cached = ${awaitExpr}_localDataSource.getLast$_pascal($callArgs);');
       sb.writeln('      if (cached == null) return right(null);');
       sb.writeln('      return right($mappingExpr);');
       sb.writeln('    } catch (_) {');
-      sb.writeln(
-          '      return left(const ${_pascal}Failure.unexpectedError());');
+      sb.writeln('      return left(const ${_pascal}Failure.cacheFailure());');
       sb.writeln('    }');
       sb.writeln('  }');
       sb.writeln();
@@ -1087,8 +1755,75 @@ ${sb.toString()}}
       final returnType = _repositoryReturnType(method);
       final callArgs = _remoteCallArgs(isWrite: _hasRequestBody(method));
 
+      final isSync = parser.providerType == 'provider';
+      final isStream = (parser.providerType == 'stream_provider' ||
+              parser.providerType == 'stream_notifier') &&
+          method.toUpperCase() == 'GET';
+
+      if (isStream) {
+        final mappingExpr = hasDomain
+            ? (parser.isTopLevelList
+                ? 'data.map((dto) => dto.toDomain()).toList()'
+                : 'data.toDomain()')
+            : 'data';
+        sb.writeln('  @override');
+        sb.writeln('  $returnType $methodName($params) async* {');
+        sb.writeln('    try {');
+        sb.writeln(
+            '      await for (final data in _remoteDataSource.$methodName($callArgs)) {');
+        if (offlineCache) {
+          final cacheArgs = _cacheCallArgs();
+          final cacheArgsStr = cacheArgs.isNotEmpty ? '$cacheArgs, ' : '';
+          sb.writeln(
+              '        _localDataSource.cache$_pascal(${cacheArgsStr}data);');
+        }
+        sb.writeln('        yield right($mappingExpr);');
+        sb.writeln('      }');
+        sb.writeln('    } on DioException catch (e) {');
+        sb.writeln('      if (e.type == DioExceptionType.connectionTimeout ||');
+        sb.writeln('          e.type == DioExceptionType.sendTimeout ||');
+        sb.writeln('          e.type == DioExceptionType.receiveTimeout ||');
+        sb.writeln('          e.type == DioExceptionType.connectionError) {');
+        sb.writeln(
+            '        yield left(const ${_pascal}Failure.networkError());');
+        sb.writeln('      } else {');
+        sb.writeln('        final dynamic data = e.response?.data;');
+        sb.writeln('        String? errorMessage;');
+        sb.writeln('        if (data is Map) {');
+        sb.writeln("          final errorVal = data['error'];");
+        sb.writeln('          if (errorVal is Map) {');
+        sb.writeln(
+            "            errorMessage = errorVal['message']?.toString() ?? errorVal['error']?.toString();");
+        sb.writeln('          } else {');
+        sb.writeln(
+            "            errorMessage = errorVal?.toString() ?? data['message']?.toString();");
+        sb.writeln('          }');
+        sb.writeln('        }');
+        sb.writeln('        errorMessage ??= e.message;');
+        sb.writeln('        if (e.response?.statusCode == 429) {');
+        sb.writeln(
+            '          yield left(${_pascal}Failure.rateLimitExceeded(errorMessage));');
+        sb.writeln('        } else {');
+        sb.writeln(
+            '          yield left(${_pascal}Failure.serverError(errorMessage));');
+        sb.writeln('        }');
+        sb.writeln('      }');
+        sb.writeln('    } catch (e) {');
+        sb.writeln(
+            '      yield left(${_pascal}Failure.unexpectedError(e.toString()));');
+        sb.writeln('    }');
+        sb.writeln('  }');
+        sb.writeln();
+        continue;
+      }
+
+      final awaitExpr = isSync ? '' : 'await ';
       sb.writeln('  @override');
-      sb.writeln('  $returnType $methodName($params) async {');
+      if (isSync) {
+        sb.writeln('  $returnType $methodName($params) {');
+      } else {
+        sb.writeln('  $returnType $methodName($params) async {');
+      }
       sb.writeln('    try {');
 
       if (method.toUpperCase() == 'GET') {
@@ -1101,27 +1836,45 @@ ${sb.toString()}}
         final cacheArgsStr = cacheArgs.isNotEmpty ? '$cacheArgs, ' : '';
 
         sb.writeln(
-            '      final response = await _remoteDataSource.$methodName($callArgs);');
+            '      final response = ${awaitExpr}_remoteDataSource.$methodName($callArgs);');
         if (offlineCache) {
           sb.writeln(
-              '      await _localDataSource.cache$_pascal(${cacheArgsStr}response);');
+              '      ${awaitExpr}_localDataSource.cache$_pascal(${cacheArgsStr}response);');
         }
         sb.writeln('      return right($mappingExpr);');
       } else {
-        sb.writeln('      await _remoteDataSource.$methodName($callArgs);');
+        sb.writeln(
+            '      ${awaitExpr}_remoteDataSource.$methodName($callArgs);');
         sb.writeln('      return right(unit);');
       }
 
       sb.writeln('    } on DioException catch (e) {');
       sb.writeln('      if (e.type == DioExceptionType.connectionTimeout ||');
       sb.writeln('          e.type == DioExceptionType.sendTimeout ||');
-      sb.writeln('          e.type == DioExceptionType.receiveTimeout ||');
-      sb.writeln('          e.type == DioExceptionType.connectionError) {');
+      sb.writeln('          e.type == DioExceptionType.receiveTimeout) {');
       sb.writeln(
-          "        return left(const ${_pascal}Failure.networkError());");
+          '        return left(const ${_pascal}Failure.timeoutFailure());');
+      sb.writeln('      }');
+      sb.writeln('      if (e.type == DioExceptionType.connectionError) {');
+      sb.writeln(
+          '        return left(const ${_pascal}Failure.networkError());');
+      sb.writeln('      }');
+      sb.writeln('      final int? statusCode = e.response?.statusCode;');
+      sb.writeln('      if (statusCode == 401) {');
+      sb.writeln(
+          '        return left(const ${_pascal}Failure.unauthorizedFailure());');
+      sb.writeln('      }');
+      sb.writeln('      if (statusCode == 403) {');
+      sb.writeln(
+          '        return left(const ${_pascal}Failure.forbiddenFailure());');
+      sb.writeln('      }');
+      sb.writeln('      if (statusCode == 404) {');
+      sb.writeln(
+          '        return left(const ${_pascal}Failure.notFoundFailure());');
       sb.writeln('      }');
       sb.writeln('      final dynamic data = e.response?.data;');
       sb.writeln('      String? errorMessage;');
+      sb.writeln('      Map<String, String>? fieldErrors;');
       sb.writeln('      if (data is Map) {');
       sb.writeln("        final errorVal = data['error'];");
       sb.writeln('        if (errorVal is Map) {');
@@ -1131,8 +1884,23 @@ ${sb.toString()}}
       sb.writeln(
           "          errorMessage = errorVal?.toString() ?? data['message']?.toString();");
       sb.writeln('        }');
+      sb.writeln("        final errors = data['errors'];");
+      sb.writeln('        if (errors is Map) {');
+      sb.writeln('          fieldErrors = {');
+      sb.writeln('            for (final e in errors.entries)');
+      sb.writeln('              e.key.toString(): e.value.toString(),');
+      sb.writeln('          };');
+      sb.writeln('        }');
       sb.writeln('      }');
       sb.writeln('      errorMessage ??= e.message;');
+      sb.writeln('      if (statusCode == 422) {');
+      sb.writeln(
+          '        return left(${_pascal}Failure.validationFailure(errorMessage, fieldErrors));');
+      sb.writeln('      }');
+      sb.writeln('      if (statusCode == 429) {');
+      sb.writeln(
+          '        return left(${_pascal}Failure.rateLimitExceeded(errorMessage));');
+      sb.writeln('      }');
       sb.writeln(
           '      return left(${_pascal}Failure.serverError(errorMessage));');
       sb.writeln('    } catch (e) {');
@@ -1152,13 +1920,13 @@ import 'package:dio/dio.dart';
 import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
 import 'package:$packageName/features/$_snake/domain/${_snake}_failure.dart';
 ${importModel}import 'package:$packageName/features/$_snake/infrastructure/${_snake}_remote_data_source.dart';
-$importLocalSource$importDto
+$importLocalSource$importOfflineQueue$importDto
 part '${_snake}_repository_impl.g.dart';
 
 @riverpod
 I${_pascal}Repository ${_camel}Repository(Ref ref) {
   final remoteDataSource = ref.watch(${_camel}RemoteDataSourceProvider);
-$watchLocal  return ${_pascal}RepositoryImpl(remoteDataSource$constructLocal);
+$watchLocal$watchOfflineQueue  return ${_pascal}RepositoryImpl(remoteDataSource$constructLocal);
 }
 
 class ${_pascal}RepositoryImpl implements I${_pascal}Repository {
@@ -1170,21 +1938,19 @@ ${sb.toString()}}
 ''';
   }
 
-  // ── MOCK INTERCEPTOR ──────────────────────────────────────────────────────
+  // ── MOCK INTERCEPTOR ───────────────────────────────────────────────────────
 
   String generateMockInterceptorCode() {
     final responseLiteral = _formatDartLiteral(successResponse);
     // Safely escape the endpoint pattern for use as a RegExp inside Dart source
     final endpointPattern = endpoint
-        .replaceAll(RegExp(r':\\w+'), r'\w+')
+        .replaceAll(RegExp(r':\w+'), r'\w+')
         .replaceAll(RegExp(r'\{\w+\}'), r'\w+')
         .replaceAll(r'\', r'\\')
         .replaceAll('/', r'\/');
 
     return '''
 ${_fileHeader(editable: true)}
-import 'dart:convert';
-
 import 'package:dio/dio.dart';
 
 /// A Dio [Interceptor] that short-circuits HTTP requests to the
@@ -1200,21 +1966,18 @@ class ${_pascal}MockInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    // Simulate realistic network latency
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-
-    final pathPattern = RegExp(r'$endpointPattern');
-    if (options.path.contains(pathPattern)) {
-      handler.resolve(
-        Response(
-          requestOptions: options,
-          data: $responseLiteral,
-          statusCode: 200,
-        ),
+    final path = options.path;
+    final regExp = RegExp(r'$endpointPattern');
+    if (regExp.hasMatch(path)) {
+      final response = Response(
+        requestOptions: options,
+        data: $responseLiteral,
+        statusCode: 200,
       );
+      handler.resolve(response);
       return;
     }
-    super.onRequest(options, handler);
+    handler.next(options);
   }
 }
 ''';
@@ -1265,6 +2028,59 @@ class ${_pascal}MockInterceptor extends Interceptor {
         ? (isList ? 'List<${_pascal}Dto> dtos' : '${_pascal}Dto dto')
         : '$dtoType data';
 
+    // Build TTL-aware store/retrieve logic
+    final hasTtl = cacheTtlSeconds > 0;
+
+    final String storeBody;
+    if (hasTtl) {
+      storeBody = '''
+    final key = $cacheKeyExpr;
+    final envelope = jsonEncode({
+      'data': ${hasDto ? (isList ? 'dtos.map((e) => e.toJson()).toList()' : 'dto.toJson()') : 'data'},
+      'cachedAt': DateTime.now().millisecondsSinceEpoch,
+    });
+    await _prefs.setString(key, envelope);''';
+    } else {
+      storeBody = '''
+    final key = $cacheKeyExpr;
+    await _prefs.setString(key, $serializerCall);''';
+    }
+
+    final String retrieveBody;
+    if (hasTtl) {
+      retrieveBody = '''
+    final key = $cacheKeyExpr;
+    final raw = _prefs.getString(key);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final envelope = jsonDecode(raw) as Map<String, dynamic>;
+      final cachedAt = envelope['cachedAt'] as int?;
+      if (cachedAt != null) {
+        final age = DateTime.now().millisecondsSinceEpoch - cachedAt;
+        if (age > const Duration(seconds: $cacheTtlSeconds).inMilliseconds) {
+          await clearCache$_pascal($callArgs); // Expired — clear it.
+          return null;
+        }
+      }
+      final jsonString = jsonEncode(envelope['data']);
+      return $deserializerCall;
+    } catch (_) {
+      await clearCache$_pascal($callArgs); // Corrupt entry or schema mismatch — clear it.
+      return null;
+    }''';
+    } else {
+      retrieveBody = '''
+    final key = $cacheKeyExpr;
+    final jsonString = _prefs.getString(key);
+    if (jsonString == null || jsonString.isEmpty) return null;
+    try {
+      return $deserializerCall;
+    } catch (_) {
+      await clearCache$_pascal($callArgs); // Corrupt entry or schema mismatch — clear it.
+      return null;
+    }''';
+    }
+
     return '''
 ${_fileHeader(editable: true)}
 import 'dart:convert';
@@ -1289,21 +2105,37 @@ class ${_pascal}LocalDataSource {
 
   final SharedPreferences _prefs;
   static const String _cacheKey = 'CACHED_${_pascal.toUpperCase()}';
+${hasTtl ? '\n  /// Cache TTL: $cacheTtlSeconds seconds.\n  static const int _ttlSeconds = $cacheTtlSeconds;' : ''}
 
+  /// Persist [${isList ? 'dtos' : hasDto ? 'dto' : 'data'}] to SharedPreferences.
   Future<void> cache$_pascal($paramWithComma$paramName) async {
-    final key = $cacheKeyExpr;
-    await _prefs.setString(key, $serializerCall);
+$storeBody
   }
 
+  /// Retrieve the cached value, or `null` if absent${hasTtl ? ', expired,' : ''} or corrupt.
   Future<$dtoType?> getLast$_pascal($callArgs) async {
+$retrieveBody
+  }
+
+  /// Remove the cached entry for $_pascal.
+  ///
+  /// Call this when you want to force a fresh network fetch on the next read.
+  Future<void> clearCache$_pascal($cacheParams) async {
     final key = $cacheKeyExpr;
-    final jsonString = _prefs.getString(key);
-    if (jsonString == null || jsonString.isEmpty) return null;
-    try {
-      return $deserializerCall;
-    } catch (_) {
-      return null;
+    await _prefs.remove(key);
+  }
+
+  /// Attempt to deserialise the cached entry and clear it on schema mismatch.
+  ///
+  /// Call this during app startup or after a model migration to ensure stale
+  /// data does not persist silently.
+  Future<void> migrateCache$_pascal($cacheParams) async {
+    final result = await getLast$_pascal($callArgs);
+    if (result == null) {
+      // Already cleared or never populated — nothing to migrate.
+      return;
     }
+    // If deserialization succeeded the data is still compatible.
   }
 }
 ''';
@@ -1321,10 +2153,107 @@ class ${_pascal}LocalDataSource {
     sb.writeln();
     sb.writeln("export '${_snake}_notifier.dart';");
     sb.writeln("export '${_snake}_state.dart';");
+    sb.writeln("export '${_snake}_derived_providers.dart';");
     if (parser.requestJson != null) {
       sb.writeln("export '${_snake}_form_notifier.dart';");
       sb.writeln("export '${_snake}_form_state.dart';");
     }
+    return sb.toString();
+  }
+
+  String generateDerivedProvidersCode() {
+    final sb = StringBuffer()..write(_fileHeader(editable: true));
+    sb.writeln(
+        "import 'package:riverpod_annotation/riverpod_annotation.dart';");
+    sb.writeln(
+        "import 'package:$packageName/features/$_snake/application/providers.dart';");
+    if (parser.domainClasses.isNotEmpty) {
+      sb.writeln(
+          "import 'package:$packageName/features/$_snake/domain/${_snake}_model.dart';");
+    }
+    sb.writeln();
+    sb.writeln("part '${_snake}_derived_providers.g.dart';");
+    sb.writeln();
+
+    sb.writeln('''
+/// Derived state provider representing the search query for filtering the $_pascal list.
+@riverpod
+class ${_pascal}SearchQuery extends _\$${_pascal}SearchQuery {
+  @override
+  String build() => '';
+
+  void updateQuery(String newQuery) => state = newQuery;
+}
+
+/// Filtered items provider that filters $_pascal list based on search query.
+@riverpod
+List<dynamic> filtered${_pascal}Items(Ref ref) {
+  final query = ref.watch(${_camel}SearchQueryProvider).toLowerCase();
+  final state = ref.watch(${_camel}Provider);
+
+  final List<dynamic> items = state.maybeWhen(
+    data: (data) => data is List ? data : [data],
+    orElse: () => const [],
+  );
+
+  if (query.isEmpty) return items;
+  return items.where((item) {
+    final itemStr = item.toString().toLowerCase();
+    return itemStr.contains(query);
+  }).toList();
+}
+''');
+
+    for (final cp in combinedProviders) {
+      final name = cp['name'] as String;
+      final type = cp['type'] as String? ?? 'dynamic';
+      final deps = cp['dependencies'] as List<dynamic>? ?? const [];
+      final camelName = StringUtils.snakeToCamel(name);
+
+      sb.writeln('/// Derived state combining: ${deps.join(', ')}');
+      sb.writeln('@riverpod');
+      sb.writeln('$type $camelName(Ref ref) {');
+      for (final dep in deps) {
+        final cleanName = dep.toString().replaceAll('Provider', '');
+        sb.writeln('  final $cleanName = ref.watch(${cleanName}Provider);');
+      }
+      sb.writeln('''
+  // TODO: Add your derived state logic here.
+  // E.g., combine watched values and return computed result.
+  throw UnimplementedError('Implement derived state logic for $camelName');
+}''');
+      sb.writeln();
+    }
+
+    final isSync = parser.providerType == 'provider';
+    final hasCoreModel = parser.domainClasses.any((c) => c.isCore);
+    if (!parser.isTopLevelList && hasCoreModel) {
+      final coreModel = parser.domainClasses.firstWhere((c) => c.isCore);
+      sb.writeln(
+          '// ── Select Optimization Providers ──────────────────────────────────');
+      sb.writeln();
+      for (final field in coreModel.fields) {
+        if (!field.isNestedObject && !field.isNestedList) {
+          final selectName =
+              '${_camel}${StringUtils.toPascalCase(field.fieldName)}Select';
+          if (isSync) {
+            sb.writeln('@riverpod');
+            sb.writeln('${field.typeName} $selectName(Ref ref) {');
+            sb.writeln(
+                '  return ref.watch(${_camel}Provider.select((s) => s.${field.fieldName}));');
+            sb.writeln('}');
+          } else {
+            sb.writeln('@riverpod');
+            sb.writeln('AsyncValue<${field.typeName}> $selectName(Ref ref) {');
+            sb.writeln(
+                '  return ref.watch(${_camel}Provider.select((s) => s.whenData((d) => d.${field.fieldName})));');
+            sb.writeln('}');
+          }
+          sb.writeln();
+        }
+      }
+    }
+
     return sb.toString();
   }
 
@@ -1445,8 +2374,7 @@ class ${_pascal}LocalDataSource {
       importForm = '''
 import 'package:$packageName/features/$_snake/application/${_snake}_form_notifier.dart';
 import 'package:$packageName/features/$_snake/application/${_snake}_form_state.dart';''';
-      formStateWatch =
-          'final formState = ref.watch(${_camel}FormProvider);';
+      formStateWatch = 'final formState = ref.watch(${_camel}FormProvider);';
       final requestRootClass = _requestRootClass;
       if (requestRootClass != null) {
         for (final field in requestRootClass.fields) {
@@ -1679,30 +2607,61 @@ class ${_pascal}DebugPage extends ConsumerWidget {
     for (final method in methods) {
       final name = _methodName(method);
       final returnType = _repositoryReturnType(method);
-      final innerType =
-          returnType.substring('Future<'.length, returnType.length - 1);
-      mockFields.add('$innerType? ${name}Result;');
+      final String innerType;
+      if (returnType.startsWith('Future<')) {
+        innerType =
+            returnType.substring('Future<'.length, returnType.length - 1);
+      } else if (returnType.startsWith('Stream<')) {
+        innerType =
+            returnType.substring('Stream<'.length, returnType.length - 1);
+      } else {
+        innerType = returnType;
+      }
 
       final params = _repositoryParams(isWrite: _hasRequestBody(method));
-      mockMethods.add('''
+      if (returnType.startsWith('Stream<')) {
+        mockFields.add('Stream<$innerType>? ${name}Result;');
+        mockMethods.add('''
   @override
-  $returnType $name($params) async {
+  $returnType $name($params) {
     final result = ${name}Result;
     if (result == null) {
       throw UnimplementedError('Set ${name}Result before calling $name.');
     }
     return result;
   }''');
+      } else {
+        mockFields.add('$innerType? ${name}Result;');
+        final isSync = parser.providerType == 'provider';
+        final asyncModifier = isSync ? '' : 'async';
+        mockMethods.add('''
+  @override
+  $returnType $name($params) $asyncModifier {
+    final result = ${name}Result;
+    if (result == null) {
+      throw UnimplementedError('Set ${name}Result before calling $name.');
+    }
+    return result;
+  }''');
+      }
     }
 
     if (offlineCache) {
       final cacheParams = _cacheParams();
       mockFields
           .add('Either<${_pascal}Failure, $_dataType?>? getCachedResult;');
-      mockMethods.add('''
+      final isSync = parser.providerType == 'provider';
+      if (isSync) {
+        mockMethods.add('''
+  @override
+  Either<${_pascal}Failure, $_dataType?> getCached$_pascal($cacheParams) =>
+      getCachedResult ?? right(null);''');
+      } else {
+        mockMethods.add('''
   @override
   Future<Either<${_pascal}Failure, $_dataType?>> getCached$_pascal($cacheParams) async =>
       getCachedResult ?? right(null);''');
+      }
     }
 
     String mockDataStr = 'null';
@@ -1743,6 +2702,13 @@ class ${_pascal}DebugPage extends ConsumerWidget {
         ? _methodName('GET')
         : _methodName(methods.first);
     final getResultField = '${getMethodName}Result';
+
+    final isStream = parser.providerType == 'stream_provider' ||
+        parser.providerType == 'stream_notifier';
+    final getResultAssignment =
+        isStream ? 'Stream.value(right(mockData))' : 'right(mockData)';
+    final getResultFailureAssignment =
+        isStream ? 'Stream.value(left(failure))' : 'left(failure)';
 
     final String testCasesCode;
     if (parser.providerType == 'notifier') {
@@ -1794,7 +2760,7 @@ class ${_pascal}DebugPage extends ConsumerWidget {
       testCasesCode = '''
     test('success resolves provider to data', () async {
       final mockData = $mockDataStr;
-      mockRepository.$getResultField = right(mockData);
+      mockRepository.$getResultField = $getResultAssignment;
 
       // Listen to the provider to keep it alive
       final subscription = container.listen($providerName$providerArgsStr, (_, __) {});
@@ -1811,7 +2777,7 @@ class ${_pascal}DebugPage extends ConsumerWidget {
 
     test('failure resolves provider to AsyncError', () async {
       const failure = ${_pascal}Failure.serverError('Server error');
-      mockRepository.$getResultField = left(failure);
+      mockRepository.$getResultField = $getResultFailureAssignment;
 
       // Listen to the provider to keep it alive
       final subscription = container.listen($providerName$providerArgsStr, (_, __) {});
@@ -1902,6 +2868,8 @@ abstract class ${_pascal}FormState with _\$${_pascal}FormState {
 ${sb.toString()}    @Default(false) bool isSubmitting,
     @Default(false) bool showErrorMessages,
     @Default(false) bool isValid,
+    @Default(false) bool isSuccess,
+    String? errorMessage,
   }) = _${_pascal}FormState;
 }
 ''';
@@ -2016,14 +2984,38 @@ ${validatorsSb.toString()}
     state = state.copyWith(
       $allErrors,
       showErrorMessages: true,
+      isSuccess: false,
+      errorMessage: null,
     );
     _validateForm();
     if (!state.isValid) return false;
 
-    state = state.copyWith(isSubmitting: true);
+    state = state.copyWith(
+      isSubmitting: true,
+      isSuccess: false,
+      errorMessage: null,
+    );
     final repository = ref.read(${_camel}RepositoryProvider);
     final result = await repository.$repoMethod($repoArgsStr);
-    state = state.copyWith(isSubmitting: false);
+    state = state.copyWith(
+      isSubmitting: false,
+      isSuccess: result.isRight(),
+      errorMessage: result.fold(
+        (failure) => failure.when(
+          serverError: (msg) => msg ?? 'Server error occurred',
+          networkError: () => 'No internet connection',
+          timeoutFailure: () => 'Request timed out. Please try again.',
+          unauthorizedFailure: (msg) => msg ?? 'Unauthorized. Please log in again.',
+          forbiddenFailure: (msg) => msg ?? 'You do not have permission to perform this action.',
+          notFoundFailure: (msg) => msg ?? 'The requested resource was not found.',
+          validationFailure: (msg, _) => msg ?? 'Validation failed. Please check your input.',
+          unexpectedError: (msg) => msg ?? 'An unexpected error occurred',
+          rateLimitExceeded: (msg) => msg ?? 'Rate limit exceeded. Please try again later.',
+          cacheFailure: (msg) => msg ?? 'A local cache error occurred.',
+        ),
+        (_) => null,
+      ),
+    );
     return result.isRight();
   }
 }
@@ -2214,5 +3206,327 @@ ${validatorsSb.toString()}
     sb.write(assignments.join(', '));
     sb.write(')');
     return sb.toString();
+  }
+
+  String generateOfflineQueueCode() {
+    return '''
+${_fileHeader()}
+import 'dart:convert';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:dio/dio.dart';
+
+part '${_snake}_offline_queue.g.dart';
+
+@riverpod
+${_pascal}OfflineQueue ${_camel}OfflineQueue(Ref ref) {
+  // TODO: Retrieve SharedPreferences and Dio from your dependency injection graph.
+  // E.g., final prefs = ref.watch(sharedPreferencesProvider);
+  //       final dio = ref.watch(dioProvider);
+  //       return ${_pascal}OfflineQueue(dio, prefs);
+  throw UnimplementedError('Please configure SharedPreferences and Dio dependency resolution.');
+}
+
+class ${_pascal}OfflineQueue {
+  ${_pascal}OfflineQueue(this._dio, this._prefs);
+
+  final Dio _dio;
+  final SharedPreferences _prefs;
+  static const _key = 'offline_mutations_$_snake';
+
+  Future<void> enqueue({
+    required String method,
+    required String url,
+    Map<String, dynamic>? body,
+  }) async {
+    final pending = _getPending();
+    pending.add({
+      'method': method,
+      'url': url,
+      'body': body,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    await _prefs.setString(_key, jsonEncode(pending));
+  }
+
+  List<Map<String, dynamic>> _getPending() {
+    final data = _prefs.getString(_key);
+    if (data == null) return [];
+    try {
+      final list = jsonDecode(data);
+      if (list is List) {
+        return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// Hook called when a synced mutation encounters a 409 Conflict from the server.
+  ///
+  /// Override this or customize the TODO to implement your resolution strategy.
+  Future<void> onConflict(Map<String, dynamic> item, DioException exception) async {
+    // TODO: Implement your conflict resolution strategy (e.g. server-wins, client-wins, merge).
+  }
+
+  Future<void> sync() async {
+    final pending = _getPending();
+    if (pending.isEmpty) return;
+
+    final remaining = <Map<String, dynamic>>[];
+    for (final item in pending) {
+      try {
+        final method = item['method'] as String;
+        final url = item['url'] as String;
+        final body = item['body'] as Map<String, dynamic>?;
+
+        await _dio.request(
+          url,
+          data: body,
+          options: Options(method: method),
+        );
+      } catch (e) {
+        if (e is DioException) {
+          if (e.response?.statusCode == 409) {
+            await onConflict(item, e);
+          } else if (
+            e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.sendTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.connectionError
+          ) {
+            remaining.add(item);
+          }
+        }
+      }
+    }
+
+    if (remaining.isEmpty) {
+      await _prefs.remove(_key);
+    } else {
+      await _prefs.setString(_key, jsonEncode(remaining));
+    }
+  }
+}
+''';
+  }
+
+  String generateObserverCode() {
+    return '''
+${_fileHeader()}
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class AppProviderObserver extends ProviderObserver {
+  @override
+  void didUpdateProvider(
+    ProviderBase<Object?> provider,
+    Object? previousValue,
+    Object? newValue,
+    ProviderContainer container,
+  ) {
+    // TODO: Add logging or analytics implementation
+    // print('Provider \${provider.name ?? provider.runtimeType} updated: \$newValue');
+  }
+
+  @override
+  void didAddProvider(
+    ProviderBase<Object?> provider,
+    Object? value,
+    ProviderContainer container,
+  ) {
+    // print('Provider \${provider.name ?? provider.runtimeType} added: \$value');
+  }
+
+  @override
+  void didDisposeProvider(
+    ProviderBase<Object?> provider,
+    ProviderContainer container,
+  ) {
+    // print('Provider \${provider.name ?? provider.runtimeType} disposed');
+  }
+
+  @override
+  void providerDidFail(
+    ProviderBase<Object?> provider,
+    Object error,
+    StackTrace stackTrace,
+    ProviderContainer container,
+  ) {
+    // print('Provider \${provider.name ?? provider.runtimeType} failed: \$error');
+  }
+}
+''';
+  }
+
+  String generateAnalyticsObserverCode() {
+    return '''
+${_fileHeader()}
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class AnalyticsProviderObserver extends ProviderObserver {
+  @override
+  void didUpdateProvider(
+    ProviderBase<Object?> provider,
+    Object? previousValue,
+    Object? newValue,
+    ProviderContainer container,
+  ) {
+    final name = provider.name ?? provider.runtimeType.toString();
+    // Firebase / Mixpanel style event formatting
+    final eventName = 'provider_update_\${_formatName(name)}';
+    _trackEvent(eventName, {
+      'provider': name,
+      'newValue': newValue.toString(),
+    });
+  }
+
+  @override
+  void didAddProvider(
+    ProviderBase<Object?> provider,
+    Object? value,
+    ProviderContainer container,
+  ) {
+    final name = provider.name ?? provider.runtimeType.toString();
+    final eventName = 'provider_add_\${_formatName(name)}';
+    _trackEvent(eventName, {
+      'provider': name,
+      'value': value.toString(),
+    });
+  }
+
+  String _formatName(String name) {
+    return name
+        .replaceAll(RegExp(r'(Provider|Notifier)\$'), '')
+        .replaceAll(RegExp(r'(?<=.)(?=[A-Z])'), '_')
+        .toLowerCase();
+  }
+
+  void _trackEvent(String eventName, Map<String, dynamic> properties) {
+    // TODO: Plug in your Firebase Analytics / Mixpanel client here
+    // analytics.logEvent(name: eventName, parameters: properties);
+  }
+}
+''';
+  }
+
+  String generateDebugObserverCode() {
+    return '''
+${_fileHeader()}
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class DebugProviderObserver extends ProviderObserver {
+  @override
+  void didUpdateProvider(
+    ProviderBase<Object?> provider,
+    Object? previousValue,
+    Object? newValue,
+    ProviderContainer container,
+  ) {
+    if (kDebugMode) {
+      final name = provider.name ?? provider.runtimeType.toString();
+      final logMap = {
+        'event': 'didUpdateProvider',
+        'provider': name,
+        'previousValue': previousValue,
+        'newValue': newValue,
+      };
+      _prettyPrint(logMap);
+    }
+  }
+
+  @override
+  void didAddProvider(
+    ProviderBase<Object?> provider,
+    Object? value,
+    ProviderContainer container,
+  ) {
+    if (kDebugMode) {
+      final name = provider.name ?? provider.runtimeType.toString();
+      final logMap = {
+        'event': 'didAddProvider',
+        'provider': name,
+        'value': value,
+      };
+      _prettyPrint(logMap);
+    }
+  }
+
+  @override
+  void didDisposeProvider(
+    ProviderBase<Object?> provider,
+    ProviderContainer container,
+  ) {
+    if (kDebugMode) {
+      final name = provider.name ?? provider.runtimeType.toString();
+      final logMap = {
+        'event': 'didDisposeProvider',
+        'provider': name,
+      };
+      _prettyPrint(logMap);
+    }
+  }
+
+  @override
+  void providerDidFail(
+    ProviderBase<Object?> provider,
+    Object error,
+    StackTrace stackTrace,
+    ProviderContainer container,
+  ) {
+    if (kDebugMode) {
+      final name = provider.name ?? provider.runtimeType.toString();
+      final logMap = {
+        'event': 'providerDidFail',
+        'provider': name,
+        'error': error.toString(),
+      };
+      _prettyPrint(logMap);
+    }
+  }
+
+  void _prettyPrint(Map<String, dynamic> map) {
+    try {
+      const encoder = JsonEncoder.withIndent('  ');
+      final pretty = encoder.convert(map);
+      debugPrint('┌── Riverpod Debug Event ──────────────────────────────────────');
+      debugPrint(pretty);
+      debugPrint('└──────────────────────────────────────────────────────────────');
+    } catch (_) {
+      debugPrint('Riverpod Event: \${map['event']} - \${map['provider']}');
+    }
+  }
+}
+''';
+  }
+
+  String generateTestOverridesCode() {
+    final domainImport = parser.domainClasses.isNotEmpty
+        ? "import 'package:$packageName/features/$_snake/domain/${_snake}_model.dart';\n"
+        : '';
+    final isSync = parser.providerType == 'provider';
+    final stateType = isSync ? _dataType : 'AsyncValue<$_dataType>';
+
+    return '''
+${_fileHeader()}
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:$packageName/features/$_snake/application/providers.dart';
+import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
+$domainImport
+/// Scoped provider override stubs for different environments / tests for $_pascal.
+///
+/// Use these in your [ProviderContainer] or [ProviderScope] to mock components.
+class ${_pascal}TestOverrides {
+  /// Override the repository provider with a mock implementation.
+  static Override overrideRepository(I${_pascal}Repository mockRepository) {
+    return ${_camel}RepositoryProvider.overrideWith((ref) => mockRepository);
+  }
+
+  /// Override the root query/data provider with a custom value.
+  static Override overrideData($stateType mockValue) {
+    return ${_camel}Provider.overrideWith((ref) => mockValue);
+  }
+}
+''';
   }
 }

@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'package:ddd_pod_cli/src/core/logger.dart';
+import 'package:ddd_pod_cli/src/core/exceptions.dart';
 import 'package:ddd_pod_cli/src/parser/curl_parser.dart';
 import 'package:ddd_pod_cli/src/parser/json_parser.dart';
 import 'package:ddd_pod_cli/src/parser/core_models_registry.dart';
@@ -35,10 +36,38 @@ Future<void> runCurlCommand({
 
   // ── Execute request ────────────────────────────────────────────────────────
   final netProgress = logger.progress('Executing live API request');
-  final dynamic responseJson;
+  dynamic responseJson;
   try {
     responseJson = await CurlParser.execute(curlReq);
     netProgress.complete('API call succeeded');
+  } on NetworkException catch (e) {
+    if (e.responseBody != null) {
+      dynamic parsedJson;
+      try {
+        parsedJson = jsonDecode(e.responseBody!);
+      } catch (_) {}
+
+      if (parsedJson != null && stdin.hasTerminal) {
+        final useErrorBody = logger.confirm(
+          'API call returned non-200 status ${e.statusCode}, but returned valid JSON. '
+          'Do you want to scaffold using this error payload?',
+          defaultValue: false,
+        );
+        if (useErrorBody) {
+          responseJson = parsedJson;
+          netProgress.complete('Using non-200 response body for scaffolding');
+        } else {
+          netProgress.fail('API call failed');
+          rethrow;
+        }
+      } else {
+        netProgress.fail('API call failed');
+        rethrow;
+      }
+    } else {
+      netProgress.fail('API call failed');
+      rethrow;
+    }
   } catch (e) {
     netProgress.fail('API call failed');
     rethrow;
@@ -53,6 +82,8 @@ Future<void> runCurlCommand({
   final packageName = scaffolder.getHostPackageName();
   final isFlutter = scaffolder.isFlutterProject();
   logger.info('Package  : $packageName (Flutter: $isFlutter)');
+
+  await scaffolder.installMissingDependencies(isFlutter: isFlutter);
 
   final dirProgress = logger.progress('Scaffolding DDD directory structure');
   final Map<String, Directory> directories;

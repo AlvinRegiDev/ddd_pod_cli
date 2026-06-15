@@ -147,4 +147,47 @@ abstract final class Runner {
     logger.success('Dependencies resolved successfully.');
     return true;
   }
+
+  // ── dart pub add ───────────────────────────────────────────────────────────
+
+  /// Run `dart pub add` (or `flutter pub add`) to add multiple [packages].
+  ///
+  /// Returns `true` on success, `false` otherwise.
+  static Future<bool> runPubAdd({
+    required List<String> packages,
+    required bool isDev,
+    bool isFlutter = false,
+  }) async {
+    if (packages.isEmpty) return true;
+    final command = isFlutter ? 'flutter' : 'dart';
+    final args = ['pub', 'add', if (isDev) '-d', ...packages];
+    final cwd = Directory.current.path;
+
+    logger.info(
+      'Installing missing ${isDev ? 'dev ' : ''}dependencies: ${packages.join(', ')}…',
+    );
+
+    final Process process;
+    try {
+      process = await Process.start(command, args, workingDirectory: cwd);
+    } on ProcessException catch (e) {
+      logger.warn('Could not run $command pub add: ${e.message}');
+      return false;
+    }
+
+    process.stdout.transform(utf8.decoder).listen(logger.detail);
+    process.stderr.transform(utf8.decoder).listen(logger.detail);
+
+    final exitCode = await process.exitCode;
+    if (exitCode != 0) {
+      logger.warn(
+        '$command pub add exited with code $exitCode. '
+        'You may need to add packages manually.',
+      );
+      return false;
+    }
+
+    logger.success('Added packages successfully.');
+    return true;
+  }
 }

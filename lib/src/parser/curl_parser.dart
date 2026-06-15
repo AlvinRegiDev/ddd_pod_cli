@@ -95,7 +95,8 @@ abstract final class CurlParser {
       } else if (t == '-d' ||
           t == '--data' ||
           t == '--data-raw' ||
-          t == '--data-binary') {
+          t == '--data-binary' ||
+          t == '--data-urlencode') {
         if (i + 1 < tokens.length) {
           body = tokens[i + 1];
           i += 2;
@@ -225,6 +226,7 @@ abstract final class CurlParser {
         throw NetworkException(
           message: 'Server returned HTTP ${response.statusCode}: $responseBody',
           statusCode: response.statusCode,
+          responseBody: responseBody,
           hint:
               'Check the URL and any required authentication headers (-H or -u).',
         );
@@ -263,8 +265,10 @@ abstract final class CurlParser {
     bool inSingleQuote = false;
     bool escape = false;
 
-    // Normalise line continuations
-    final normalized = cmd.replaceAll('\\\n', ' ').replaceAll('\\\r\n', ' ');
+    // Normalise line continuations (allowing trailing spaces after backslash)
+    final normalized = cmd
+        .replaceAll(RegExp(r'\\\s*\n'), ' ')
+        .replaceAll(RegExp(r'\\\s*\r\n'), ' ');
 
     for (int i = 0; i < normalized.length; i++) {
       final char = normalized[i];

@@ -31,8 +31,8 @@ void main() {
 
   group('Keywords Tests', () {
     test('getSafeName escapes reserved keywords', () {
-      expect(Keywords.getSafeName('default'), 'defaultValue');
-      expect(Keywords.getSafeName('class'), 'classValue');
+      expect(Keywords.getSafeName('default'), 'default_');
+      expect(Keywords.getSafeName('class'), 'class_');
       expect(Keywords.getSafeName('normal'), 'normal');
     });
   });
@@ -73,7 +73,7 @@ void main() {
         dataDto.fields.any(
           (f) =>
               f.jsonKey == 'default' &&
-              f.dartName == 'defaultValue' &&
+              f.dartName == 'default_' &&
               f.typeName == 'bool?',
         ),
         isTrue,
@@ -82,7 +82,7 @@ void main() {
         dataDto.fields.any(
           (f) =>
               f.jsonKey == 'class' &&
-              f.dartName == 'classValue' &&
+              f.dartName == 'class_' &&
               f.typeName == 'String?',
         ),
         isTrue,
@@ -100,13 +100,13 @@ void main() {
       );
       expect(
         coreDomain.fields.any(
-          (f) => f.fieldName == 'defaultValue' && f.typeName == 'bool?',
+          (f) => f.fieldName == 'default_' && f.typeName == 'bool?',
         ),
         isTrue,
       );
       expect(
         coreDomain.fields.any(
-          (f) => f.fieldName == 'classValue' && f.typeName == 'String?',
+          (f) => f.fieldName == 'class_' && f.typeName == 'String?',
         ),
         isTrue,
       );
@@ -164,6 +164,7 @@ void main() {
         final parser = JsonParser(
           featureName: 'Dashboard',
           responseJson: json,
+          typeOverrides: {'empty_arr': 'List<dynamic>?'},
         );
 
         final rootDto = parser.responseDtoClasses.firstWhere(
@@ -413,25 +414,25 @@ void main() {
       final repoCode = generator.generateIRepositoryCode();
       expect(
         repoCode.contains(
-          'Future<Either<TaskFailure, TaskModel>> getTask({required String id});',
+          'Future<Either<TaskFailure, TaskModel>> getTask({required String id, CancelToken? cancelToken});',
         ),
         isTrue,
       );
       expect(
         repoCode.contains(
-          'Future<Either<TaskFailure, Unit>> createTask({required String id, required TaskRequestDto request});',
+          'Future<Either<TaskFailure, Unit>> createTask({required String id, required TaskRequestDto request, CancelToken? cancelToken});',
         ),
         isTrue,
       );
       expect(
         repoCode.contains(
-          'Future<Either<TaskFailure, Unit>> updateTask({required String id, required TaskRequestDto request});',
+          'Future<Either<TaskFailure, Unit>> updateTask({required String id, required TaskRequestDto request, CancelToken? cancelToken});',
         ),
         isTrue,
       );
       expect(
         repoCode.contains(
-          'Future<Either<TaskFailure, Unit>> deleteTask({required String id});',
+          'Future<Either<TaskFailure, Unit>> deleteTask({required String id, CancelToken? cancelToken});',
         ),
         isTrue,
       );
@@ -439,29 +440,30 @@ void main() {
       final dataSourceCode = generator.generateRemoteDataSourceCode();
       expect(
         dataSourceCode.contains(
-          'Future<TaskDto> getTask({required String id}) async',
+          'Future<TaskDto> getTask({required String id, CancelToken? cancelToken}) async',
         ),
         isTrue,
       );
       expect(
         dataSourceCode.contains(
-          'Future<void> createTask({required String id, required TaskRequestDto request}) async',
+          'Future<void> createTask({required String id, required TaskRequestDto request, CancelToken? cancelToken}) async',
         ),
         isTrue,
       );
       expect(
         dataSourceCode.contains(
-          'Future<void> deleteTask({required String id}) async',
+          'Future<void> deleteTask({required String id, CancelToken? cancelToken}) async',
         ),
         isTrue,
       );
       expect(
-        dataSourceCode.contains("await _dio.delete('/api/tasks/\$id');"),
+        dataSourceCode.contains(
+            "await _dio.delete('/api/tasks/\$id', cancelToken: cancelToken);"),
         isTrue,
       );
       expect(
         dataSourceCode.contains(
-          "await _dio.post('/api/tasks/\$id', data: request.toJson());",
+          "await _dio.post('/api/tasks/\$id', data: request.toJson(), cancelToken: cancelToken);",
         ),
         isTrue,
       );
@@ -469,17 +471,18 @@ void main() {
       final repoImplCode = generator.generateRepositoryImplCode();
       expect(
         repoImplCode.contains(
-          'Future<Either<TaskFailure, TaskModel>> getTask({required String id}) async',
+          'Future<Either<TaskFailure, TaskModel>> getTask({required String id, CancelToken? cancelToken}) async',
         ),
         isTrue,
       );
       expect(
-        repoImplCode.contains('await _remoteDataSource.getTask(id: id);'),
+        repoImplCode.contains(
+            'await _remoteDataSource.getTask(id: id, cancelToken: cancelToken);'),
         isTrue,
       );
       expect(
         repoImplCode.contains(
-          'await _remoteDataSource.createTask(id: id, request: request);',
+          'await _remoteDataSource.createTask(id: id, request: request, cancelToken: cancelToken);',
         ),
         isTrue,
       );
@@ -760,7 +763,7 @@ void main() {
 
         final notifierCode = generator.generateNotifierCode();
         expect(
-          notifierCode.contains('Future<DefaultModel> defaultValue('),
+          notifierCode.contains('Future<DefaultModel> default_('),
           isTrue,
         );
 
@@ -779,7 +782,7 @@ void main() {
         final notifierCode2 = generator2.generateNotifierCode();
         expect(
           notifierCode2.contains(
-            'ref.read(defaultValueProvider.notifier)',
+            'ref.read(default_Provider.notifier)',
           ),
           isFalse,
         );
@@ -841,7 +844,8 @@ void main() {
         );
         final repoCode = generatorPrimitive.generateIRepositoryCode();
         expect(
-          repoCode.contains('Future<Either<PingFailure, String>> getPing();'),
+          repoCode.contains(
+              'Future<Either<PingFailure, String>> getPing({CancelToken? cancelToken});'),
           isTrue,
         );
 
@@ -864,7 +868,7 @@ void main() {
         final repoCode2 = generatorListPrimitive.generateIRepositoryCode();
         expect(
           repoCode2.contains(
-            'Future<Either<TagsFailure, List<String>>> getTags();',
+            'Future<Either<TagsFailure, List<String>>> getTags({CancelToken? cancelToken});',
           ),
           isTrue,
         );
@@ -872,7 +876,8 @@ void main() {
         final remoteSourceCode =
             generatorListPrimitive.generateRemoteDataSourceCode();
         expect(
-          remoteSourceCode.contains('Future<List<String>> getTags() async'),
+          remoteSourceCode.contains(
+              'Future<List<String>> getTags({CancelToken? cancelToken}) async'),
           isTrue,
         );
         // Updated: list.cast is the expected pattern from the generator
@@ -1194,7 +1199,7 @@ class PaginationDto {}
       final repoCode = generator.generateIRepositoryCode();
       expect(
         repoCode.contains(
-          'Future<Either<UsersListFailure, List<UsersListModel>>> getUsersList({required int page, required int limit});',
+          'Future<Either<UsersListFailure, List<UsersListModel>>> getUsersList({required int page, required int limit, CancelToken? cancelToken});',
         ),
         isTrue,
       );
@@ -1202,7 +1207,7 @@ class PaginationDto {}
       final remoteSourceCode = generator.generateRemoteDataSourceCode();
       expect(
         remoteSourceCode.contains(
-          'Future<List<UsersListDto>> getUsersList({required int page, required int limit}) async',
+          'Future<List<UsersListDto>> getUsersList({required int page, required int limit, CancelToken? cancelToken}) async',
         ),
         isTrue,
       );
@@ -1487,6 +1492,136 @@ class PaginationDto {}
       } finally {
         tempDir.deleteSync(recursive: true);
       }
+    });
+
+    group('Failure Coverage Tests', () {
+      test('Failure union code contains all 10 variants', () {
+        final parser = JsonParser(featureName: 'Task', responseJson: {'id': 1});
+        final generator = CodeGenerator(
+          parser: parser,
+          packageName: 'test_app',
+          featureName: 'Task',
+          endpoint: '/api/tasks',
+          methods: ['GET'],
+        );
+        final code = generator.generateFailureCode();
+        expect(code.contains('timeoutFailure()'), isTrue);
+        expect(code.contains('unauthorizedFailure('), isTrue);
+        expect(code.contains('forbiddenFailure('), isTrue);
+        expect(code.contains('notFoundFailure('), isTrue);
+        expect(code.contains('validationFailure('), isTrue);
+        expect(code.contains('cacheFailure('), isTrue);
+        expect(code.contains('rateLimitExceeded('), isTrue);
+        expect(code.contains('networkError()'), isTrue);
+        expect(code.contains('serverError('), isTrue);
+        expect(code.contains('unexpectedError('), isTrue);
+      });
+    });
+
+    group('Atomic Writes Tests', () {
+      test('safeWriteToFile writes cleanly', () {
+        final tempDir = Directory.systemTemp.createTempSync('ddd_atomic_test_');
+        final targetPath = '${tempDir.path}/test_file.txt';
+        final parser = JsonParser(featureName: 'Task', responseJson: {'id': 1});
+        final generator = CodeGenerator(
+          parser: parser,
+          packageName: 'test_app',
+          featureName: 'Task',
+          endpoint: '/api/tasks',
+          methods: ['GET'],
+          force: true,
+        );
+        generator.safeWriteToFile(targetPath, 'Hello Atomic World');
+        final file = File(targetPath);
+        expect(file.existsSync(), isTrue);
+        expect(file.readAsStringSync(), contains('Hello Atomic World'));
+        tempDir.deleteSync(recursive: true);
+      });
+    });
+
+    group('Cache TTL Tests', () {
+      test('generateLocalDataSourceCode generates TTL and invalidation logic',
+          () {
+        final parser = JsonParser(featureName: 'Task', responseJson: {'id': 1});
+        final generator = CodeGenerator(
+          parser: parser,
+          packageName: 'test_app',
+          featureName: 'Task',
+          endpoint: '/api/tasks',
+          methods: ['GET'],
+          cacheTtlSeconds: 60,
+        );
+        final code = generator.generateLocalDataSourceCode();
+        expect(
+            code.contains(
+                'final age = DateTime.now().millisecondsSinceEpoch - cachedAt;'),
+            isTrue);
+        expect(code.contains('clearCacheTask'), isTrue);
+        expect(code.contains('migrateCacheTask'), isTrue);
+      });
+    });
+
+    group('Retry-After Tests', () {
+      test('DioException retry after logic', () {
+        final parser = JsonParser(featureName: 'Task', responseJson: {'id': 1});
+        final generator = CodeGenerator(
+          parser: parser,
+          packageName: 'test_app',
+          featureName: 'Task',
+          endpoint: '/api/tasks',
+          methods: ['GET'],
+          retryConfig: {'max_attempts': 3, 'delay_ms': 1000},
+        );
+        final code = generator.generateRemoteDataSourceCode();
+        expect(
+            code.contains(
+                'final retryAfterHeader = e.response?.headers.value(\'retry-after\');'),
+            isTrue);
+      });
+    });
+
+    group('Select Optimization Tests', () {
+      test('select() providers are generated for root model fields', () {
+        final parser = JsonParser(
+            featureName: 'User', responseJson: {'id': 1, 'name': 'Alvin'});
+        final generator = CodeGenerator(
+          parser: parser,
+          packageName: 'test_app',
+          featureName: 'User',
+          endpoint: '/api/users',
+          methods: ['GET'],
+        );
+        final code = generator.generateDerivedProvidersCode();
+        expect(code.contains('userPhoneSelect'), isFalse);
+        expect(code.contains('userIdSelect'), isTrue);
+        expect(code.contains('userNameSelect'), isTrue);
+      });
+    });
+
+    group('Idempotent Generation Tests', () {
+      test('hash validation prevents overwrites when same config', () {
+        final tempDir =
+            Directory.systemTemp.createTempSync('ddd_idempotent_test_');
+        final targetPath = '${tempDir.path}/task.dart';
+        final parser = JsonParser(featureName: 'Task', responseJson: {'id': 1});
+        final generator = CodeGenerator(
+          parser: parser,
+          packageName: 'test_app',
+          featureName: 'Task',
+          endpoint: '/api/tasks',
+          methods: ['GET'],
+        );
+        generator.safeWriteToFile(targetPath, generator.generateFailureCode());
+        final file = File(targetPath);
+        final statBefore = file.statSync();
+
+        // Regenerate without force - should skip because hash matches
+        generator.safeWriteToFile(targetPath, generator.generateFailureCode());
+        final statAfter = file.statSync();
+        expect(statAfter.modified, equals(statBefore.modified));
+
+        tempDir.deleteSync(recursive: true);
+      });
     });
   });
 }

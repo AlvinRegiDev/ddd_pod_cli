@@ -13,6 +13,9 @@
 /// - Enum hinting when a field has ≤ 8 distinct string values
 library;
 
+import 'dart:io';
+import 'package:path/path.dart' as p;
+
 import 'package:ddd_pod_cli/src/core/exceptions.dart';
 import 'package:ddd_pod_cli/src/core/logger.dart';
 import 'package:ddd_pod_cli/src/utils/keywords.dart';
@@ -51,10 +54,11 @@ final class JsonParser {
     }
     if (this.isPaginatedList) {
       isListResponse = true;
-      if (this.providerType == 'future_provider') {
+      if (this.providerType == 'future_provider' ||
+          this.providerType == 'provider') {
         logger.warn(
           'Paginated lists require state mutation. '
-          'Overriding "provider_type" from "future_provider" to "async_notifier".',
+          'Overriding "provider_type" from "${this.providerType}" to "async_notifier".',
         );
         this.providerType = 'async_notifier';
       }
@@ -128,6 +132,23 @@ final class JsonParser {
     'put_request_body',
     'patch_request_body',
     'request_body',
+    'dependencies',
+    'stream_config',
+    'retry_config',
+    'search_config',
+    'offline_mutation_queue',
+    'feature_dependencies',
+    'auto_dispose',
+    'keep_alive',
+    'use_custom_state',
+    'combined_providers',
+    'listen_providers',
+    'pagination_config',
+    'response_root',
+    'success_response',
+    'failure_response',
+    'toDomain_fallback',
+    'family_param',
   };
 
   // ── Parse entry point ──────────────────────────────────────────────────────
@@ -295,8 +316,11 @@ final class JsonParser {
               currentPath: currentPath, depth: depth, fields: fields);
         } else {
           final primitiveType = _inferPrimitiveType(value);
-          final typeName =
-              primitiveType == 'dynamic' ? 'dynamic' : '$primitiveType?';
+          final typeName = primitiveType == 'dynamic'
+              ? 'dynamic'
+              : (primitiveType.endsWith('?')
+                  ? primitiveType
+                  : '$primitiveType?');
           fields.add(
               DtoField(jsonKey: key, dartName: dartName, typeName: typeName));
         }
@@ -321,7 +345,21 @@ final class JsonParser {
     required List<DtoField> fields,
   }) {
     final matchedDomainClass = registry?.findMatchingCoreDomainClass(key);
+    bool isCompatible = false;
     if (matchedDomainClass != null) {
+      isCompatible =
+          _verifyCoreModelCompatibility(matchedDomainClass, value, false);
+      if (isCompatible) {
+        final matchedDtoClass =
+            registry?.findMatchingCoreDtoClass(matchedDomainClass);
+        if (matchedDtoClass != null) {
+          isCompatible =
+              _verifyCoreModelCompatibility(matchedDtoClass, value, true);
+        }
+      }
+    }
+
+    if (matchedDomainClass != null && isCompatible) {
       final matchedDtoClass =
           registry?.findMatchingCoreDtoClass(matchedDomainClass);
       final dtoTypeName = matchedDtoClass ?? '${matchedDomainClass}Dto';
@@ -345,6 +383,12 @@ final class JsonParser {
         }
       }
     } else {
+      if (matchedDomainClass != null) {
+        logger.warn(
+          'Core model "$matchedDomainClass" fields are incompatible with required fields in "$key". '
+          'Generating a local DTO instead.',
+        );
+      }
       final nestedClassName =
           '$parentClassName${StringUtils.toPascalCase(key)}';
       fields.add(DtoField(
@@ -371,9 +415,22 @@ final class JsonParser {
     required List<DtoField> fields,
   }) {
     if (value.isEmpty) {
-      fields.add(DtoField(
-          jsonKey: key, dartName: dartName, typeName: 'List<dynamic>?'));
-      return;
+      final otherJson = isRequest ? responseJson : requestJson;
+      final path = [...currentPath, key];
+      final fallbackList = _findFieldAtPath(otherJson, path);
+      if (fallbackList is List && fallbackList.isNotEmpty) {
+        _inferDtoListField(
+            key, dartName, fallbackList, parentClassName, classes, isRequest,
+            currentPath: currentPath, depth: depth, fields: fields);
+        return;
+      }
+      throw SchemaParseException(
+        message:
+            'Ambiguous empty array found for field "$key" at path "${path.join('.')}".',
+        hint:
+            'You must provide a type override in "type_overrides" for this field, '
+            'e.g. "${path.join('.')}": "List<String>?" or similar.',
+      );
     }
 
     final hasMap = value.any((item) => item is Map<String, dynamic>);
@@ -381,7 +438,24 @@ final class JsonParser {
       final singularKey = StringUtils.singularize(key);
       final matchedDomainClass =
           registry?.findMatchingCoreDomainClass(singularKey);
+      final maps = value.whereType<Map<String, dynamic>>().toList();
+      final mergedMap = _mergeMaps(maps);
+
+      bool isCompatible = false;
       if (matchedDomainClass != null) {
+        isCompatible =
+            _verifyCoreModelCompatibility(matchedDomainClass, mergedMap, false);
+        if (isCompatible) {
+          final matchedDtoClass =
+              registry?.findMatchingCoreDtoClass(matchedDomainClass);
+          if (matchedDtoClass != null) {
+            isCompatible =
+                _verifyCoreModelCompatibility(matchedDtoClass, mergedMap, true);
+          }
+        }
+      }
+
+      if (matchedDomainClass != null && isCompatible) {
         final matchedDtoClass =
             registry?.findMatchingCoreDtoClass(matchedDomainClass);
         final dtoTypeName = matchedDtoClass ?? '${matchedDomainClass}Dto';
@@ -405,6 +479,12 @@ final class JsonParser {
           }
         }
       } else {
+        if (matchedDomainClass != null) {
+          logger.warn(
+            'Core model "$matchedDomainClass" fields are incompatible with list items in "$key". '
+            'Generating a local DTO instead.',
+          );
+        }
         final nestedClassName =
             '$parentClassName${StringUtils.toPascalCase(singularKey)}';
         fields.add(DtoField(
@@ -414,8 +494,6 @@ final class JsonParser {
           isNestedList: true,
           nestedClassName: nestedClassName,
         ));
-        final maps = value.whereType<Map<String, dynamic>>().toList();
-        final mergedMap = _mergeMaps(maps);
         _inferDto(mergedMap, nestedClassName, classes, isRequest,
             currentPath: [...currentPath, key], depth: depth + 1);
       }
@@ -434,6 +512,7 @@ final class JsonParser {
   // ── Primitive type inference ───────────────────────────────────────────────
 
   String _inferPrimitiveType(dynamic value) {
+    if (value == null) return 'String?';
     if (value is int) return 'int';
     if (value is double) return 'double';
     if (value is bool) return 'bool';
@@ -622,7 +701,10 @@ final class JsonParser {
 
       if (value is Map<String, dynamic>) {
         final matchedDomainClass = registry?.findMatchingCoreDomainClass(key);
-        if (matchedDomainClass != null) {
+        final isCompatible = matchedDomainClass != null &&
+            _verifyCoreModelCompatibility(matchedDomainClass, value, false);
+
+        if (matchedDomainClass != null && isCompatible) {
           fields.add(DomainField(
             fieldName: fieldName,
             typeName: '$matchedDomainClass?',
@@ -636,6 +718,12 @@ final class JsonParser {
             if (domainImport != null) coreDomainImports.add(domainImport);
           }
         } else {
+          if (matchedDomainClass != null) {
+            logger.warn(
+              'Core model "$matchedDomainClass" fields are incompatible with required fields in "$key". '
+              'Generating a local domain class instead.',
+            );
+          }
           _gatherDomainFields(
             value,
             newPath,
@@ -648,17 +736,107 @@ final class JsonParser {
         }
       } else if (value is List) {
         if (value.isEmpty) {
-          fields.add(DomainField(
-              fieldName: fieldName,
-              typeName: 'List<dynamic>?',
-              jsonPath: newPath));
+          final path = [...currentPath, key];
+          final otherJson = requestJson;
+          final fallbackList = _findFieldAtPath(otherJson, path);
+          if (fallbackList is List && fallbackList.isNotEmpty) {
+            // Recurse using fallback list
+            final hasMap =
+                fallbackList.any((item) => item is Map<String, dynamic>);
+            if (hasMap) {
+              final singularKey = StringUtils.singularize(key);
+              final matchedDomainClass =
+                  registry?.findMatchingCoreDomainClass(singularKey);
+              final maps =
+                  fallbackList.whereType<Map<String, dynamic>>().toList();
+              final mergedMap = _mergeMaps(maps);
+              final isCompatible = matchedDomainClass != null &&
+                  _verifyCoreModelCompatibility(
+                      matchedDomainClass, mergedMap, false);
+
+              if (matchedDomainClass != null && isCompatible) {
+                fields.add(DomainField(
+                  fieldName: fieldName,
+                  typeName: 'List<$matchedDomainClass>?',
+                  jsonPath: newPath,
+                  isNestedList: true,
+                  nestedClassName: matchedDomainClass,
+                ));
+              } else {
+                final nestedClassName =
+                    '$domainPrefix${StringUtils.toPascalCase(singularKey)}Model';
+                final nestedDtoClassName =
+                    '$dtoPrefix${StringUtils.toPascalCase(singularKey)}Dto';
+
+                final nestedFields = <DomainField>[];
+                _gatherDomainFields(
+                  mergedMap,
+                  [],
+                  '',
+                  nestedFields,
+                  '$domainPrefix${StringUtils.toPascalCase(singularKey)}',
+                  '$dtoPrefix${StringUtils.toPascalCase(singularKey)}',
+                  depth: depth + 1,
+                );
+
+                domainClasses.add(DomainClass(
+                  className: nestedClassName,
+                  dtoClassName: nestedDtoClassName,
+                  fields: nestedFields,
+                  isCore: false,
+                ));
+
+                fields.add(DomainField(
+                  fieldName: fieldName,
+                  typeName: 'List<$nestedClassName>?',
+                  jsonPath: newPath,
+                  isNestedList: true,
+                  nestedClassName: nestedClassName,
+                ));
+              }
+            } else {
+              final enumValues = _enumHint(fallbackList);
+              final elementTypeName = _inferListElementType(fallbackList);
+              final typeString = elementTypeName == 'dynamic'
+                  ? 'dynamic'
+                  : '$elementTypeName?';
+              fields.add(DomainField(
+                fieldName: fieldName,
+                typeName: 'List<$typeString>?',
+                jsonPath: newPath,
+                enumHint: enumValues,
+              ));
+            }
+          } else {
+            if (overriddenType != null) {
+              fields.add(DomainField(
+                  fieldName: fieldName,
+                  typeName: overriddenType,
+                  jsonPath: newPath));
+            } else {
+              throw SchemaParseException(
+                message:
+                    'Ambiguous empty array found for field "$fieldName" at path "${path.join('.')}".',
+                hint:
+                    'You must provide a type override in "type_overrides" for this field, '
+                    'e.g. "${path.join('.')}": "List<String>?" or similar.',
+              );
+            }
+          }
         } else {
           final hasMap = value.any((item) => item is Map<String, dynamic>);
           if (hasMap) {
             final singularKey = StringUtils.singularize(key);
             final matchedDomainClass =
                 registry?.findMatchingCoreDomainClass(singularKey);
-            if (matchedDomainClass != null) {
+            final maps = value.whereType<Map<String, dynamic>>().toList();
+            final mergedMap = _mergeMaps(maps);
+
+            final isCompatible = matchedDomainClass != null &&
+                _verifyCoreModelCompatibility(
+                    matchedDomainClass, mergedMap, false);
+
+            if (matchedDomainClass != null && isCompatible) {
               fields.add(DomainField(
                 fieldName: fieldName,
                 typeName: 'List<$matchedDomainClass>?',
@@ -675,13 +853,16 @@ final class JsonParser {
                 }
               }
             } else {
+              if (matchedDomainClass != null) {
+                logger.warn(
+                  'Core model "$matchedDomainClass" fields are incompatible with list items in "$key". '
+                  'Generating a local domain class instead.',
+                );
+              }
               final nestedClassName =
                   '$domainPrefix${StringUtils.toPascalCase(singularKey)}Model';
               final nestedDtoClassName =
                   '$dtoPrefix${StringUtils.toPascalCase(singularKey)}Dto';
-
-              final maps = value.whereType<Map<String, dynamic>>().toList();
-              final mergedMap = _mergeMaps(maps);
 
               final nestedFields = <DomainField>[];
               _gatherDomainFields(
@@ -737,5 +918,107 @@ final class JsonParser {
         ));
       }
     });
+  }
+
+  // ── Verification and fallbacks ─────────────────────────────────────────────
+
+  dynamic _findFieldAtPath(dynamic json, List<String> path) {
+    if (json == null || path.isEmpty) return null;
+    dynamic current = json;
+    for (final segment in path) {
+      if (current is Map) {
+        current = current[segment];
+      } else if (current is List && current.isNotEmpty) {
+        final first = current.first;
+        if (first is Map) {
+          current = first[segment];
+        } else {
+          return null;
+        }
+      } else {
+        return null;
+      }
+    }
+    return current;
+  }
+
+  bool _verifyCoreModelCompatibility(
+    String className,
+    Map<String, dynamic> schemaMap,
+    bool isDto,
+  ) {
+    if (registry == null) return false;
+    final registryMap =
+        isDto ? registry!.dtoClassesToPaths : registry!.domainClassesToPaths;
+    final relativePath = registryMap[className];
+    if (relativePath == null) return false;
+    final filePath = p.join(Directory.current.path, 'lib', relativePath);
+    final file = File(filePath);
+    if (!file.existsSync()) return true;
+
+    final content = file.readAsStringSync();
+
+    // Extract constructor parameters for Freezed class
+    final pattern = RegExp(
+      'factory\\s+$className\\s*\\(\\{([\\s\\S]*?)\\}\\)\\s*=',
+      multiLine: true,
+    );
+    final match = pattern.firstMatch(content);
+    if (match == null) return false;
+    final paramsStr = match.group(1)!;
+
+    // Parse existing fields: name -> type
+    final paramPattern = RegExp(
+      r'(?:required\s+)?([a-zA-Z0-9_<>\?]+)\s+([a-zA-Z0-9_]+)\b',
+      multiLine: true,
+    );
+    final existingFields = <String, String>{};
+    for (final paramMatch in paramPattern.allMatches(paramsStr)) {
+      final type = paramMatch.group(1)!;
+      final name = paramMatch.group(2)!;
+      existingFields[name] = type;
+    }
+
+    // Compare with schemaMap keys
+    bool compatible = true;
+    schemaMap.forEach((key, val) {
+      if (_excludedRootKeys.contains(key)) return;
+
+      final mappedKey = fieldMapping[key] ?? StringUtils.snakeToCamel(key);
+      final safeName = Keywords.getSafeName(mappedKey);
+
+      final existingType = existingFields[safeName];
+      if (existingType == null) {
+        compatible = false;
+        return;
+      }
+
+      final inferredBaseType = _inferPrimitiveType(val);
+      if (inferredBaseType != 'dynamic') {
+        final cleanExisting =
+            existingType.replaceAll('?', '').replaceAll(' ', '');
+        final cleanInferred =
+            inferredBaseType.replaceAll('?', '').replaceAll(' ', '');
+
+        if (cleanInferred == 'int' &&
+            cleanExisting != 'int' &&
+            cleanExisting != 'double' &&
+            cleanExisting != 'num') {
+          compatible = false;
+        } else if (cleanInferred == 'double' &&
+            cleanExisting != 'double' &&
+            cleanExisting != 'num') {
+          compatible = false;
+        } else if (cleanInferred == 'bool' && cleanExisting != 'bool') {
+          compatible = false;
+        } else if (cleanInferred == 'String' &&
+            cleanExisting != 'String' &&
+            cleanExisting != 'DateTime') {
+          compatible = false;
+        }
+      }
+    });
+
+    return compatible;
   }
 }

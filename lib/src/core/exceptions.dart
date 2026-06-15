@@ -122,10 +122,14 @@ final class NetworkException extends DddCliException {
     required super.message,
     super.hint,
     this.statusCode,
+    this.responseBody,
   });
 
   /// The HTTP status code returned by the server, if any.
   final int? statusCode;
+
+  /// The response body returned by the server.
+  final String? responseBody;
 
   @override
   String toString() => 'NetworkException: $message'

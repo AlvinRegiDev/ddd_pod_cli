@@ -76,6 +76,8 @@ Future<void> runGenerateCommand({
     'Package  : $packageName (Flutter: $isFlutter)',
   );
 
+  await scaffolder.installMissingDependencies(isFlutter: isFlutter);
+
   final dirProgress = logger.progress('Scaffolding DDD directory structure');
   final Map<String, Directory> directories;
   try {
@@ -134,6 +136,21 @@ Future<void> runGenerateCommand({
       force: force,
       successResponse: config.successResponse,
       failureResponse: config.failureResponse,
+      toDomainFallback: config.toDomainFallback,
+      familyParam: config.familyParam,
+      keepAlive: config.keepAlive,
+      combinedProviders: config.combinedProviders,
+      listenProviders: config.listenProviders,
+      paginationConfig: config.paginationConfig,
+      useCustomState: config.useCustomState,
+      autoDispose: config.autoDispose,
+      dependencies: config.dependencies,
+      streamConfig: config.streamConfig,
+      retryConfig: config.retryConfig,
+      searchConfig: config.searchConfig,
+      offlineMutationQueue: config.offlineMutationQueue,
+      featureDependencies: config.featureDependencies,
+      cacheTtlSeconds: config.cacheTtlSeconds,
     );
     generator.writeToFiles(directories);
     genProgress.complete('All files written successfully');

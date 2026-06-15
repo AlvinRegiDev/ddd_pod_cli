@@ -14,6 +14,7 @@ import 'package:path/path.dart' as p;
 
 import 'package:ddd_pod_cli/src/core/exceptions.dart';
 import 'package:ddd_pod_cli/src/core/logger.dart';
+import 'package:ddd_pod_cli/src/generator/runner.dart';
 import 'package:ddd_pod_cli/src/utils/string_utils.dart';
 
 /// Scaffolds the DDD directory structure for a single feature.
@@ -44,7 +45,6 @@ final class DirectoryScaffolder {
       );
     }
     _cachedPackageName = match.group(1)!;
-    _validateDependencies(content);
     return _cachedPackageName!;
   }
 
@@ -127,9 +127,11 @@ final class DirectoryScaffolder {
     return dirs;
   }
 
-  // ── Dependency validation ──────────────────────────────────────────────────
+  // ── Dependency validation and auto-install ──────────────────────────────────
 
-  void _validateDependencies(String pubspecContent) {
+  /// Reads the pubspec.yaml file and automatically installs any missing recommended dependencies.
+  Future<void> installMissingDependencies({required bool isFlutter}) async {
+    final (content, _) = _readPubspec();
     const requiredDeps = [
       'flutter_riverpod',
       'riverpod_annotation',
@@ -144,28 +146,42 @@ final class DirectoryScaffolder {
       'riverpod_generator',
     ];
 
+    bool hasDependency(String pubspec, String dep) {
+      return RegExp('^\\s*$dep\\s*:', multiLine: true).hasMatch(pubspec);
+    }
+
     final missingDeps =
-        requiredDeps.where((dep) => !pubspecContent.contains(dep)).toList();
+        requiredDeps.where((dep) => !hasDependency(content, dep)).toList();
     final missingDevDeps =
-        requiredDevDeps.where((dep) => !pubspecContent.contains(dep)).toList();
+        requiredDevDeps.where((dep) => !hasDependency(content, dep)).toList();
 
     if (missingDeps.isEmpty && missingDevDeps.isEmpty) return;
 
-    final sb = StringBuffer();
-    sb.writeln(
-      '⚠️  Target project pubspec.yaml is missing recommended packages:',
-    );
+    logger.info('Detected missing dependencies in target project.');
+
     if (missingDeps.isNotEmpty) {
-      sb.writeln('   Dependencies   : ${missingDeps.join(", ")}');
-      sb.writeln(
-          '   Add with       : flutter pub add ${missingDeps.join(" ")}');
+      final success = await Runner.runPubAdd(
+        packages: missingDeps,
+        isDev: false,
+        isFlutter: isFlutter,
+      );
+      if (!success) {
+        logger.warn(
+            'Failed to add some dependencies. You might need to add them manually.');
+      }
     }
+
     if (missingDevDeps.isNotEmpty) {
-      sb.writeln('   Dev deps       : ${missingDevDeps.join(", ")}');
-      sb.writeln(
-          '   Add with       : flutter pub add -d ${missingDevDeps.join(" ")}');
+      final success = await Runner.runPubAdd(
+        packages: missingDevDeps,
+        isDev: true,
+        isFlutter: isFlutter,
+      );
+      if (!success) {
+        logger.warn(
+            'Failed to add some dev dependencies. You might need to add them manually.');
+      }
     }
-    logger.warn(sb.toString().trimRight());
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

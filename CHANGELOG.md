@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.0.3
+
+- **Feature**: Improved the dependency scaffolder to directly update `pubspec.yaml` and run `pub get` rather than running slower individual `pub add` command calls.
+- **Feature**: Added automatic support for matching and importing existing core domain classes and DTOs from the registry instead of generating duplicates.
+- **Feature**: Refactored the test overrides code generator to support `AsyncNotifier`, `Notifier`, `StreamNotifier`, and family/parameterized providers with custom Mock classes and `.overrideWith` / `.overrideWith2` APIs.
+- **Feature**: Automatically map and use default fallbacks for nested non-nullable domain model fields from DTO mappings.
+- **Fix**: Standardized generated Riverpod Observers to use `base class` syntax to align with modern Dart rules.
+- **Fix**: Prevented generation of the unused `_retry` helper for WebSocket-based stream remote data sources.
+- **Fix**: Ensured derived providers use specific class/element return types instead of `dynamic` when filtering list responses.
+- **Fix**: Handled DTO serialization/deserialization appropriately when mapping registry-matched core models.
+
 ## 1.0.2
 
 - **Feature**: Added automatic detection and installation of missing required dependencies and dev dependencies in the target project's `pubspec.yaml` when scaffolding.

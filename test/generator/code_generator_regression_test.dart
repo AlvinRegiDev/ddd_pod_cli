@@ -301,10 +301,93 @@ void main() {
       expect(testOverridesCode.contains(r'$_pascal'), isFalse);
       expect(testOverridesCode.contains(r'$_camel'), isFalse);
       expect(testOverridesCode.contains('class ProductTestOverrides'), isTrue);
-      expect(testOverridesCode.contains('AsyncValue<ProductModel> mockValue'),
-          isTrue);
+      expect(testOverridesCode.contains('ProductState mockValue'), isTrue);
       expect(testOverridesCode.contains('IProductRepository mockRepository'),
           isTrue);
+      expect(testOverridesCode.contains('class MockProductNotifier'), isTrue);
+    });
+
+    test('generateTestOverridesCode for future_provider uses FutureOr', () {
+      final parser = JsonParser(
+        featureName: 'Product',
+        responseJson: {'id': 1},
+        providerType: 'future_provider',
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'shop',
+        featureName: 'Product',
+        endpoint: '/products',
+        methods: ['GET'],
+      );
+
+      final testOverridesCode = generator.generateTestOverridesCode();
+      expect(testOverridesCode.contains('FutureOr<ProductModel> mockValue'),
+          isTrue);
+    });
+
+    test('derived providers use element class return types instead of dynamic',
+        () {
+      final parser = JsonParser(
+        featureName: 'Product',
+        responseJson: [
+          {'id': 1}
+        ],
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'shop',
+        featureName: 'Product',
+        endpoint: '/products',
+        methods: ['GET'],
+      );
+
+      final derivedCode = generator.generateDerivedProvidersCode();
+      expect(derivedCode.contains('List<ProductModel> filteredProductItems'),
+          isTrue);
+    });
+
+    test('websocket retry helper is suppressed', () {
+      final parser = JsonParser(
+        featureName: 'Chat',
+        responseJson: {'id': 1},
+        providerType: 'stream_provider',
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'app',
+        featureName: 'Chat',
+        endpoint: '/chat',
+        methods: ['GET'],
+        streamConfig: {'type': 'websocket'},
+        retryConfig: {'max_attempts': 3, 'delay_ms': 1000},
+      );
+
+      final remoteCode = generator.generateRemoteDataSourceCode();
+      expect(remoteCode.contains('_retry'), isFalse);
+    });
+
+    test('toDomain nested nullability maps default values', () {
+      final parser = JsonParser(
+        featureName: 'User',
+        responseJson: {
+          'id': 1,
+          'settings': {'theme': 'dark'},
+        },
+        typeOverrides: {
+          'settings.theme': 'String',
+        },
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'app',
+        featureName: 'User',
+        endpoint: '/user',
+        methods: ['GET'],
+      );
+
+      final dtoCode = generator.generateDtoCode();
+      expect(dtoCode.contains(r'settingsTheme: (settings?.theme) ?? '), isTrue);
     });
   });
 }

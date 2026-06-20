@@ -76,7 +76,10 @@ Future<void> runGenerateCommand({
     'Package  : $packageName (Flutter: $isFlutter)',
   );
 
-  await scaffolder.installMissingDependencies(isFlutter: isFlutter);
+  await scaffolder.installMissingDependencies(
+    isFlutter: isFlutter,
+    offline: config.offlineCache || config.offlineMutationQueue,
+  );
 
   final dirProgress = logger.progress('Scaffolding DDD directory structure');
   final Map<String, Directory> directories;
@@ -151,6 +154,7 @@ Future<void> runGenerateCommand({
       offlineMutationQueue: config.offlineMutationQueue,
       featureDependencies: config.featureDependencies,
       cacheTtlSeconds: config.cacheTtlSeconds,
+      imports: config.imports,
     );
     generator.writeToFiles(directories);
     genProgress.complete('All files written successfully');

@@ -1,8 +1,14 @@
 name: ddd_pod_cli
 description: Scaffold Domain-Driven Design (DDD) Feature-First architecture with Riverpod, Freezed, fpdart, and DIO from a single JSON config or a cURL command.
-version: 1.0.2
+version: 1.0.3
 repository: https://github.com/AlvinRegiDev/ddd_pod_cli
 homepage: https://github.com/AlvinRegiDev/ddd_pod_cli
+topics:
+  - code-generator
+  - ddd
+  - riverpod
+  - freezed
+  - cli
 
 environment:
   sdk: ^3.4.0

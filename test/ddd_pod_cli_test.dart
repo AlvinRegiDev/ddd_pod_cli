@@ -609,7 +609,7 @@ void main() {
           isTrue,
         );
         expect(
-          debugPageCode.contains('ref.watch(dashboardProvider)'),
+          debugPageCode.contains('ref.watch(dashboardNotifierProvider)'),
           isTrue,
         );
         expect(
@@ -1621,6 +1621,132 @@ class PaginationDto {}
         expect(statAfter.modified, equals(statBefore.modified));
 
         tempDir.deleteSync(recursive: true);
+      });
+    });
+
+    group('Dependency Injection Tests', () {
+      late Directory tempDir;
+      late Directory originalCwd;
+
+      setUp(() {
+        originalCwd = Directory.current;
+        tempDir =
+            Directory.systemTemp.createTempSync('ddd_dep_injection_test_');
+        Directory.current = tempDir;
+      });
+
+      tearDown(() {
+        Directory.current = originalCwd;
+        try {
+          tempDir.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+
+      test(
+          'automatically inserts missing dependencies and dev_dependencies into pubspec.yaml',
+          () async {
+        final pubspecFile = File('${tempDir.path}/pubspec.yaml');
+        pubspecFile.writeAsStringSync('''
+name: mock_app
+environment:
+  sdk: ^3.4.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+''');
+
+        final scaffolder = DirectoryScaffolder(featureName: 'Product');
+        // Let's run it with offline: false
+        await scaffolder.installMissingDependencies(
+            isFlutter: true, offline: false);
+
+        final updatedPubspec = pubspecFile.readAsStringSync();
+
+        // Check normal dependencies
+        expect(updatedPubspec.contains('flutter_riverpod: ^2.5.1'), isTrue);
+        expect(updatedPubspec.contains('riverpod_annotation: ^2.3.5'), isTrue);
+        expect(updatedPubspec.contains('freezed_annotation: ^2.4.4'), isTrue);
+        expect(updatedPubspec.contains('json_annotation: ^4.9.0'), isTrue);
+        expect(updatedPubspec.contains('dio: ^5.5.0'), isTrue);
+        expect(updatedPubspec.contains('fpdart: ^0.6.0'), isTrue);
+
+        // Should NOT contain shared_preferences since offline is false
+        expect(updatedPubspec.contains('shared_preferences:'), isFalse);
+
+        // Check dev dependencies
+        expect(updatedPubspec.contains('build_runner: ^2.4.11'), isTrue);
+        expect(updatedPubspec.contains('freezed: ^2.5.2'), isTrue);
+        expect(updatedPubspec.contains('json_serializable: ^6.8.0'), isTrue);
+        expect(updatedPubspec.contains('riverpod_generator: ^2.4.2'), isTrue);
+      });
+
+      test('automatically inserts shared_preferences when offline flag is true',
+          () async {
+        final pubspecFile = File('${tempDir.path}/pubspec.yaml');
+        pubspecFile.writeAsStringSync('''
+name: mock_app
+environment:
+  sdk: ^3.4.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+''');
+
+        final scaffolder = DirectoryScaffolder(featureName: 'Product');
+        await scaffolder.installMissingDependencies(
+            isFlutter: true, offline: true);
+
+        final updatedPubspec = pubspecFile.readAsStringSync();
+        expect(updatedPubspec.contains('shared_preferences: ^2.2.3'), isTrue);
+      });
+
+      test('preserves existing dependencies and does not duplicate them',
+          () async {
+        final pubspecFile = File('${tempDir.path}/pubspec.yaml');
+        pubspecFile.writeAsStringSync('''
+name: mock_app
+environment:
+  sdk: ^3.4.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.0.0
+  flutter_riverpod: ^2.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  freezed: ^2.4.0
+''');
+
+        final scaffolder = DirectoryScaffolder(featureName: 'Product');
+        await scaffolder.installMissingDependencies(
+            isFlutter: true, offline: false);
+
+        final updatedPubspec = pubspecFile.readAsStringSync();
+
+        // Check that preexisting ones were NOT updated/duplicated
+        expect(updatedPubspec.contains('dio: ^5.0.0'), isTrue);
+        expect(updatedPubspec.contains('dio: ^5.5.0'), isFalse);
+        expect(updatedPubspec.contains('flutter_riverpod: ^2.4.0'), isTrue);
+        expect(updatedPubspec.contains('flutter_riverpod: ^2.5.1'), isFalse);
+        expect(updatedPubspec.contains('freezed: ^2.4.0'), isTrue);
+        expect(updatedPubspec.contains('freezed: ^2.5.2'), isFalse);
+
+        // Check that other missing dependencies were added
+        expect(updatedPubspec.contains('riverpod_annotation: ^2.3.5'), isTrue);
+        expect(updatedPubspec.contains('json_serializable: ^6.8.0'), isTrue);
       });
     });
   });

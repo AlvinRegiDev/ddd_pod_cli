@@ -182,6 +182,16 @@ final class JsonParser {
     isListResponse = true;
     final maps = list.whereType<Map<String, dynamic>>().toList();
     if (maps.isNotEmpty) {
+      final singularFeature = StringUtils.singularize(featureName);
+      final matchedDomainClass =
+          registry?.findMatchingCoreDomainClass(singularFeature);
+      if (matchedDomainClass != null) {
+        responseDataType = matchedDomainClass;
+        final matchedDtoClass =
+            registry?.findMatchingCoreDtoClass(matchedDomainClass);
+        responseDtoType = matchedDtoClass ?? '${matchedDomainClass}Dto';
+        return;
+      }
       responseDataType = '${rootClassName}Model';
       responseDtoType = '${rootClassName}Dto';
       final mergedMap = _mergeMaps(maps);
@@ -196,6 +206,17 @@ final class JsonParser {
   void _parseResponseMap(Map<String, dynamic> map, String rootClassName) {
     if (map.containsKey('provider_type')) {
       providerType = map['provider_type'] as String;
+    }
+
+    final singularFeature = StringUtils.singularize(featureName);
+    final matchedDomainClass =
+        registry?.findMatchingCoreDomainClass(singularFeature);
+    if (matchedDomainClass != null) {
+      responseDataType = matchedDomainClass;
+      final matchedDtoClass =
+          registry?.findMatchingCoreDtoClass(matchedDomainClass);
+      responseDtoType = matchedDtoClass ?? '${matchedDomainClass}Dto';
+      return;
     }
 
     responseDataType = '${rootClassName}Model';
@@ -608,7 +629,21 @@ final class JsonParser {
       final singularKey = StringUtils.singularize(envelopeKey);
       final matchedDomainClass =
           registry?.findMatchingCoreDomainClass(singularKey);
-      if (matchedDomainClass != null) return;
+      if (matchedDomainClass != null) {
+        if (packageName != null) {
+          final domainImport = registry
+              ?.getImportPath(packageName!, matchedDomainClass, isDto: false);
+          if (domainImport != null) coreDomainImports.add(domainImport);
+          final matchedDtoClass =
+              registry?.findMatchingCoreDtoClass(matchedDomainClass);
+          if (matchedDtoClass != null) {
+            final dtoImport = registry
+                ?.getImportPath(packageName!, matchedDtoClass, isDto: true);
+            if (dtoImport != null) coreDtoImports.add(dtoImport);
+          }
+        }
+        return;
+      }
       coreSchema = responseJson[envelopeKey];
       final isList = coreSchema is List;
       coreDtoClassName =
@@ -617,7 +652,40 @@ final class JsonParser {
       final singularFeature = StringUtils.singularize(featureName);
       final matchedDomainClass =
           registry?.findMatchingCoreDomainClass(singularFeature);
-      if (matchedDomainClass != null) return;
+      if (matchedDomainClass != null) {
+        if (packageName != null) {
+          final domainImport = registry
+              ?.getImportPath(packageName!, matchedDomainClass, isDto: false);
+          if (domainImport != null) coreDomainImports.add(domainImport);
+          final matchedDtoClass =
+              registry?.findMatchingCoreDtoClass(matchedDomainClass);
+          if (matchedDtoClass != null) {
+            final dtoImport = registry
+                ?.getImportPath(packageName!, matchedDtoClass, isDto: true);
+            if (dtoImport != null) coreDtoImports.add(dtoImport);
+          }
+        }
+        return;
+      }
+    } else {
+      final singularFeature = StringUtils.singularize(featureName);
+      final matchedDomainClass =
+          registry?.findMatchingCoreDomainClass(singularFeature);
+      if (matchedDomainClass != null) {
+        if (packageName != null) {
+          final domainImport = registry
+              ?.getImportPath(packageName!, matchedDomainClass, isDto: false);
+          if (domainImport != null) coreDomainImports.add(domainImport);
+          final matchedDtoClass =
+              registry?.findMatchingCoreDtoClass(matchedDomainClass);
+          if (matchedDtoClass != null) {
+            final dtoImport = registry
+                ?.getImportPath(packageName!, matchedDtoClass, isDto: true);
+            if (dtoImport != null) coreDtoImports.add(dtoImport);
+          }
+        }
+        return;
+      }
     }
 
     if (coreSchema == null) return;
@@ -906,8 +974,9 @@ final class JsonParser {
         }
       } else {
         final primitiveType = _inferPrimitiveType(value);
-        final typeName =
-            primitiveType == 'dynamic' ? 'dynamic' : '$primitiveType?';
+        final typeName = primitiveType == 'dynamic'
+            ? 'dynamic'
+            : (primitiveType.endsWith('?') ? primitiveType : '$primitiveType?');
         // Enum hint for primitive string fields in the sample data
         final enumHint = value is String ? [value] : null;
         fields.add(DomainField(

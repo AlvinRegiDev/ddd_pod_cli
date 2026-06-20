@@ -117,6 +117,7 @@ final class FeatureConfig {
     required this.offlineMutationQueue,
     required this.featureDependencies,
     required this.cacheTtlSeconds,
+    required this.imports,
   });
 
   /// Validated, non-empty feature name (used as the Dart class prefix).
@@ -212,6 +213,9 @@ final class FeatureConfig {
   /// `{"data": ..., "cachedAt": epochMs}` envelope and returns `null` when
   /// the entry is older than [cacheTtlSeconds].
   final int cacheTtlSeconds;
+
+  /// Custom file imports to add to generated files.
+  final List<String> imports;
 
   // ── Factory ──────────────────────────────────────────────────────────────
 
@@ -480,11 +484,17 @@ final class FeatureConfig {
           final deps = (c['dependencies'] as List? ?? [])
               .map((e) => e.toString())
               .toList();
+          final cpImports =
+              (c['imports'] as List? ?? []).map((e) => e.toString()).toList();
           if (name.isEmpty) {
             errors.add('Combined provider requires a "name".');
           } else {
-            combinedProviders
-                .add({'name': name, 'type': type, 'dependencies': deps});
+            combinedProviders.add({
+              'name': name,
+              'type': type,
+              'dependencies': deps,
+              'imports': cpImports,
+            });
           }
         }
       }
@@ -522,6 +532,13 @@ final class FeatureConfig {
 
     // ── use_custom_state ─────────────────────────────────────────────────────
     final useCustomState = json['use_custom_state'] as bool? ?? false;
+
+    // ── imports ──────────────────────────────────────────────────────────────
+    final rawImports = json['imports'];
+    final List<String> imports = [];
+    if (rawImports is List) {
+      imports.addAll(rawImports.map((e) => e.toString()));
+    }
 
     // Throw if there are any collected validation errors
     if (errors.isNotEmpty) {
@@ -567,6 +584,7 @@ final class FeatureConfig {
       offlineMutationQueue: offlineMutationQueue,
       featureDependencies: featureDependencies,
       cacheTtlSeconds: cacheTtlSeconds,
+      imports: imports,
     );
   }
 

@@ -4,7 +4,7 @@ library;
 import 'package:ddd_pod_cli/src/core/logger.dart';
 
 /// The current CLI version — kept in sync with pubspec.yaml.
-const String _kCliVersion = '1.0.2';
+const String _kCliVersion = '1.0.3';
 
 /// Prints the current CLI version to stdout.
 void runVersionCommand() {

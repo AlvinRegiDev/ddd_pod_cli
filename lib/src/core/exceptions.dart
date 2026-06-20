@@ -97,6 +97,8 @@ final class DependencyException extends DddCliException {
 /// Thrown when `dart run build_runner build` exits with a non-zero code or
 /// fails to start.
 final class BuildRunnerException extends DddCliException {
+  /// Creates a new [BuildRunnerException] with the given message, optional hint,
+  /// and exit code.
   const BuildRunnerException({
     required super.message,
     super.hint,

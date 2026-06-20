@@ -129,59 +129,116 @@ final class DirectoryScaffolder {
 
   // ── Dependency validation and auto-install ──────────────────────────────────
 
-  /// Reads the pubspec.yaml file and automatically installs any missing recommended dependencies.
-  Future<void> installMissingDependencies({required bool isFlutter}) async {
-    final (content, _) = _readPubspec();
-    const requiredDeps = [
-      'flutter_riverpod',
-      'riverpod_annotation',
-      'freezed_annotation',
-      'dio',
-      'fpdart',
-    ];
-    const requiredDevDeps = [
-      'build_runner',
-      'freezed',
-      'json_serializable',
-      'riverpod_generator',
-    ];
+  /// Reads the pubspec.yaml file, automatically adds missing dependencies,
+  /// and runs `pub get` to resolve them.
+  Future<void> installMissingDependencies({
+    required bool isFlutter,
+    bool offline = false,
+  }) async {
+    final (content, pubspecPath) = _readPubspec();
+
+    // Recommended dependency versions
+    final requiredDeps = {
+      'flutter_riverpod': '^2.5.1',
+      'riverpod_annotation': '^2.3.5',
+      'freezed_annotation': '^2.4.4',
+      'json_annotation': '^4.9.0',
+      'dio': '^5.5.0',
+      'fpdart': '^0.6.0',
+      if (offline) 'shared_preferences': '^2.2.3',
+    };
+
+    final requiredDevDeps = {
+      'build_runner': '^2.4.11',
+      'freezed': '^2.5.2',
+      'json_serializable': '^6.8.0',
+      'riverpod_generator': '^2.4.2',
+    };
 
     bool hasDependency(String pubspec, String dep) {
       return RegExp('^\\s*$dep\\s*:', multiLine: true).hasMatch(pubspec);
     }
 
-    final missingDeps =
-        requiredDeps.where((dep) => !hasDependency(content, dep)).toList();
-    final missingDevDeps =
-        requiredDevDeps.where((dep) => !hasDependency(content, dep)).toList();
+    final missingDeps = requiredDeps.entries
+        .where((e) => !hasDependency(content, e.key))
+        .toList();
+    final missingDevDeps = requiredDevDeps.entries
+        .where((e) => !hasDependency(content, e.key))
+        .toList();
 
     if (missingDeps.isEmpty && missingDevDeps.isEmpty) return;
 
-    logger.info('Detected missing dependencies in target project.');
+    logger.info(
+        'Detected missing dependencies in target project. Auto-adding to pubspec.yaml...');
+
+    var updatedContent = content;
 
     if (missingDeps.isNotEmpty) {
-      final success = await Runner.runPubAdd(
-        packages: missingDeps,
-        isDev: false,
-        isFlutter: isFlutter,
+      updatedContent = _addDepsToYaml(
+        content: updatedContent,
+        section: 'dependencies',
+        deps: missingDeps.map((e) => '  ${e.key}: ${e.value}').toList(),
       );
-      if (!success) {
-        logger.warn(
-            'Failed to add some dependencies. You might need to add them manually.');
-      }
     }
 
     if (missingDevDeps.isNotEmpty) {
-      final success = await Runner.runPubAdd(
-        packages: missingDevDeps,
-        isDev: true,
-        isFlutter: isFlutter,
+      updatedContent = _addDepsToYaml(
+        content: updatedContent,
+        section: 'dev_dependencies',
+        deps: missingDevDeps.map((e) => '  ${e.key}: ${e.value}').toList(),
       );
-      if (!success) {
-        logger.warn(
-            'Failed to add some dev dependencies. You might need to add them manually.');
+    }
+
+    try {
+      File(pubspecPath).writeAsStringSync(updatedContent);
+      logger.success(
+          'Automatically updated pubspec.yaml with missing dependencies.');
+    } catch (e) {
+      logger.warn('Failed to write to pubspec.yaml directly: $e');
+      return;
+    }
+
+    final success = await Runner.runPubGet(isFlutter: isFlutter);
+    if (!success) {
+      logger.warn(
+        'Failed to run pub get. You might need to resolve dependencies manually.',
+      );
+    }
+  }
+
+  /// Helper to safely inject dependencies under a specific section (dependencies or dev_dependencies).
+  String _addDepsToYaml({
+    required String content,
+    required String section,
+    required List<String> deps,
+  }) {
+    final hasCarriageReturn = content.contains('\r\n');
+    final lineSeparator = hasCarriageReturn ? '\r\n' : '\n';
+    final lines = content.split(RegExp(r'\r?\n'));
+
+    final sectionRegex = RegExp('^$section\\s*:');
+    int sectionIndex = -1;
+
+    for (int i = 0; i < lines.length; i++) {
+      if (sectionRegex.hasMatch(lines[i])) {
+        sectionIndex = i;
+        break;
       }
     }
+
+    if (sectionIndex != -1) {
+      // Insert immediately after the section header line
+      lines.insertAll(sectionIndex + 1, deps);
+    } else {
+      // Section not found, append to the end
+      if (lines.isNotEmpty && lines.last.trim().isNotEmpty) {
+        lines.add('');
+      }
+      lines.add('$section:');
+      lines.addAll(deps);
+    }
+
+    return lines.join(lineSeparator);
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

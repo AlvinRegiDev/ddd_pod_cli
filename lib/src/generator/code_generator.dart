@@ -31,7 +31,7 @@ import 'package:ddd_pod_cli/src/utils/string_utils.dart';
 import 'package:ddd_pod_cli/src/utils/import_cycle_detector.dart';
 
 /// Current CLI version — kept in sync with pubspec.yaml.
-const String _kCliVersion = '1.0.3';
+const String _kCliVersion = '1.0.4';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -401,11 +401,13 @@ final class CodeGenerator {
   }
 
   String _formatDependency(String dep) {
-    if (dep.toLowerCase().endsWith('provider')) {
-      return dep;
+    var name = dep;
+    if (name.endsWith('Provider')) {
+      name = name.substring(0, name.length - 'Provider'.length);
+    } else if (name.endsWith('provider')) {
+      name = name.substring(0, name.length - 'provider'.length);
     }
-    final camel = StringUtils.snakeToCamel(dep);
-    return '${camel}Provider';
+    return StringUtils.snakeToCamel(name);
   }
 
   // ── File header ───────────────────────────────────────────────────────────
@@ -452,7 +454,7 @@ final class CodeGenerator {
 // It will not be overwritten unless you run generate with the --force flag.
 // Config Hash: $hash
 // ─────────────────────────────────────────────────────────────────────────────
-// ignore_for_file: type=lint, invalid_annotation_target, unused_import
+// ignore_for_file: type=lint, invalid_annotation_target, unused_import, unnecessary_import
 ''';
     }
     return '''
@@ -460,7 +462,7 @@ final class CodeGenerator {
 // ddd_pod_cli v$_kCliVersion · generated at $timestamp
 // Config Hash: $hash
 // ─────────────────────────────────────────────────────────────────────────────
-// ignore_for_file: type=lint, invalid_annotation_target, unused_import
+// ignore_for_file: type=lint, invalid_annotation_target, unused_import, unnecessary_import
 ''';
   }
 
@@ -692,6 +694,51 @@ final class CodeGenerator {
     return '';
   }
 
+  String _generateDefaultDomainState() {
+    if (parser.isListResponse) {
+      return 'const []';
+    }
+    final domainType = parser.responseDataType;
+    if (domainType == 'String') return "''";
+    if (domainType == 'int') return '0';
+    if (domainType == 'double') return '0.0';
+    if (domainType == 'bool') return 'false';
+
+    if (parser.domainClasses.isEmpty) {
+      return 'const $domainType()';
+    }
+
+    final domainClass = parser.domainClasses.firstWhere(
+      (c) => c.className == domainType,
+      orElse: () => parser.domainClasses.first,
+    );
+
+    final args = StringBuffer();
+    for (final field in domainClass.fields) {
+      if (field.typeName.endsWith('?')) {
+        continue;
+      }
+      final cleanType = field.typeName;
+      final val = () {
+        if (cleanType.startsWith('List<')) {
+          final typeArg = cleanType.substring(5, cleanType.length - 1);
+          return 'const <$typeArg>[]';
+        }
+        return switch (cleanType) {
+          'String' => "''",
+          'int' => '0',
+          'double' || 'num' => '0.0',
+          'bool' => 'false',
+          'DateTime' => 'DateTime.now()',
+          _ => 'const $cleanType()',
+        };
+      }();
+      args.write('${field.fieldName}: $val, ');
+    }
+
+    return '$domainType($args)';
+  }
+
   // ── STATE ─────────────────────────────────────────────────────────────────
 
   String generateStateCode() {
@@ -774,8 +821,9 @@ sealed class ${_pascal}State with _\$${_pascal}State {
         : ', ${pathParamsMap.values.map((v) => 'String $v').join(', ')}';
     return '''
 ${_fileHeader(editable: true)}
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-
+${_customImports()}
 import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
 $importModel$importRepoImpl
 part '${_snake}_notifier.g.dart';
@@ -804,7 +852,7 @@ Stream<$_dataType> $_camel(Ref ref$paramsArg) async* {
     return '''
 ${_fileHeader(editable: true)}
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-
+${_customImports()}
 import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
 $importModel$importRepoImpl$importDto
 part '${_snake}_notifier.g.dart';
@@ -839,8 +887,9 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
         : ', ${pathParamsMap.values.map((v) => 'String $v').join(', ')}';
     return '''
 ${_fileHeader(editable: true)}
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-
+${_customImports()}
 import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
 $importModel$importRepoImpl
 part '${_snake}_notifier.g.dart';
@@ -865,21 +914,8 @@ $_dataType $_camel(Ref ref$paramsArg) {
     String importDto,
   ) {
     if (isPaginatedList) {
-      return '''
-${_fileHeader(editable: true)}
-import 'dart:async';
-
-import 'package:riverpod_annotation/riverpod_annotation.dart';
-
-import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
-$importModel$importRepoImpl$importDto
-part '${_snake}_notifier.g.dart';
-
-$_riverpodAnnotation
-class ${_pascal}Notifier extends _\$${_pascal}Notifier {
-  int _page = 1;
-  bool _hasReachedMax = false;
-
+      final buildMethod = _hasGet
+          ? '''
   @override
   FutureOr<$_dataType> build($buildParams) async {
     _page = 1;
@@ -891,8 +927,17 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
       (failure) => throw failure,
       (data) => data,
     );
-  }
+  }'''
+          : '''
+  @override
+  FutureOr<$_dataType> build($buildParams) async {
+    _page = 1;
+    _hasReachedMax = false;
+    return ${_generateDefaultDomainState()};
+  }''';
 
+      final refreshMethod = _hasGet
+          ? '''
   /// Re-fetch from the first page, resetting pagination state.
   Future<void> refresh() async {
     state = const AsyncLoading();
@@ -904,8 +949,11 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
       (failure) => AsyncError(failure, StackTrace.current),
       AsyncData.new,
     );
-  }
+  }'''
+          : '';
 
+      final nextPageMethod = _hasGet
+          ? '''
   Future<void> fetchNextPage() async {
     if (_hasReachedMax || state.isLoading) return;
     state = AsyncLoading<$_dataType>().copyWithPrevious(state);
@@ -938,8 +986,11 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
         return AsyncData<$_dataType>([...list, ...uniqueNewData]);
       },
     );
-  }
+  }'''
+          : '';
 
+      final prevPageMethod = _hasGet
+          ? '''
   Future<void> fetchPreviousPage() async {
     if (_page <= 1 || state.isLoading) return;
     state = AsyncLoading<$_dataType>().copyWithPrevious(state);
@@ -971,25 +1022,39 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
         return AsyncData(state.value ?? const []);
       },
     );
-  }
+  }'''
+          : '';
 
-  ${_submitMethodCode()}
-}
-''';
-    }
-
-    return '''
+      return '''
 ${_fileHeader(editable: true)}
 import 'dart:async';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-
+${_customImports()}
 import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
 $importModel$importRepoImpl$importDto
 part '${_snake}_notifier.g.dart';
 
 $_riverpodAnnotation
 class ${_pascal}Notifier extends _\$${_pascal}Notifier {
+  int _page = 1;
+  bool _hasReachedMax = false;
+
+  $buildMethod
+
+  $refreshMethod
+
+  $nextPageMethod
+
+  $prevPageMethod
+
+  ${_submitMethodCode()}
+}
+''';
+    }
+
+    final buildMethod = _hasGet
+        ? '''
   @override
   FutureOr<$_dataType> build($buildParams) async {
     final repository = ref.watch(${_camel}RepositoryProvider);
@@ -999,8 +1064,15 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
       (failure) => throw failure,
       (data) => data,
     );
-  }
+  }'''
+        : '''
+  @override
+  FutureOr<$_dataType> build($buildParams) async {
+    return ${_generateDefaultDomainState()};
+  }''';
 
+    final refreshMethod = _hasGet
+        ? '''
   /// Re-fetch data from the remote source.
   Future<void> refresh() async {
     state = const AsyncLoading();
@@ -1010,7 +1082,24 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
       (failure) => AsyncError(failure, StackTrace.current),
       AsyncData.new,
     );
-  }
+  }'''
+        : '';
+
+    return '''
+${_fileHeader(editable: true)}
+import 'dart:async';
+
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+${_customImports()}
+import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
+$importModel$importRepoImpl$importDto
+part '${_snake}_notifier.g.dart';
+
+$_riverpodAnnotation
+class ${_pascal}Notifier extends _\$${_pascal}Notifier {
+  $buildMethod
+
+  $refreshMethod
 
   ${_submitMethodCode()}
 }
@@ -1028,8 +1117,9 @@ class ${_pascal}Notifier extends _\$${_pascal}Notifier {
         : ', ${pathParamsMap.values.map((v) => 'String $v').join(', ')}';
     return '''
 ${_fileHeader(editable: true)}
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-
+${_customImports()}
 import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
 $importModel$importRepoImpl
 part '${_snake}_notifier.g.dart';
@@ -1591,10 +1681,13 @@ sealed class ${_pascal}Failure with _\$${_pascal}Failure {
         if (streamType == 'websocket') {
           final parseBody = _streamParseBodySnippet(hasDto);
           sb.writeln('''
-    final wsUrl = endpoint.startsWith('https')
-        ? endpoint.replaceFirst('https', 'wss')
-        : endpoint.startsWith('http')
-            ? endpoint.replaceFirst('http', 'ws')
+    final base = _dio.options.baseUrl;
+    final wsUrl = endpoint.startsWith('http')
+        ? endpoint.replaceFirst('http', 'ws')
+        : base.startsWith('http')
+            ? (base.endsWith('/')
+                ? '\${base.replaceFirst(\'http\', \'ws\')}\${endpoint.startsWith(\'/\') ? endpoint.substring(1) : endpoint}'
+                : '\${base.replaceFirst(\'http\', \'ws\')}\${endpoint.startsWith(\'/\') ? endpoint : \'/\$endpoint\'}')
             : endpoint;
     int attempt = 0;
     while (true) {
@@ -2158,7 +2251,7 @@ class ${_pascal}MockInterceptor extends Interceptor {
 
     final String cacheKeyExpr;
     if (pathParamsMap.isNotEmpty) {
-      final suffixStr = pathParamsMap.values.map((v) => '\$$v').join('_');
+      final suffixStr = pathParamsMap.values.map((v) => '\${$v}').join('_');
       cacheKeyExpr = "'\${_cacheKey}_$suffixStr'";
     } else {
       cacheKeyExpr = '_cacheKey';
@@ -2254,7 +2347,7 @@ $storeBody
   }
 
   /// Retrieve the cached value, or `null` if absent${hasTtl ? ', expired,' : ''} or corrupt.
-  Future<$dtoType?> getLast$_pascal($callArgs) async {
+  Future<$dtoType?> getLast$_pascal($cacheParams) async {
 $retrieveBody
   }
 
@@ -2336,7 +2429,11 @@ $retrieveBody
 
     final String familyParamDecl;
     final String familyCall;
-    if (familyParam != null) {
+    if (pathParamsMap.isNotEmpty) {
+      familyParamDecl =
+          ', ' + pathParamsMap.values.map((v) => 'String $v').join(', ');
+      familyCall = '(' + pathParamsMap.values.join(', ') + ')';
+    } else if (familyParam != null) {
       final name = familyParam!['name']!;
       final type = familyParam!['type']!;
       familyParamDecl = ', $type $name';
@@ -2344,6 +2441,16 @@ $retrieveBody
     } else {
       familyParamDecl = '';
       familyCall = '';
+    }
+
+    final isSync = parser.providerType == 'provider';
+    final String itemsExpr;
+    if (isSync) {
+      itemsExpr = parser.isListResponse ? 'state' : '[state]';
+    } else {
+      final listExpr = parser.isListResponse ? 'data' : '[data]';
+      itemsExpr =
+          'state.maybeWhen(data: (data) => $listExpr, orElse: () => <dynamic>[])';
     }
 
     final String elementClass =
@@ -2365,10 +2472,7 @@ List<$elementClass> filtered${_pascal}Items(Ref ref$familyParamDecl) {
   final query = ref.watch(${_camel}SearchQueryProvider).toLowerCase();
   final state = ref.watch($_providerName$familyCall);
 
-  final List<dynamic> items = state.maybeWhen(
-    data: (data) => ${parser.isListResponse ? 'data' : '[data]'},
-    orElse: () => <dynamic>[],
-  );
+  final List<dynamic> items = $itemsExpr;
 
   if (query.isEmpty) return items.cast<$elementClass>().toList();
   return items.where((item) {
@@ -2386,11 +2490,15 @@ List<$elementClass> filtered${_pascal}Items(Ref ref$familyParamDecl) {
 
       sb.writeln('/// Derived state combining: ${deps.join(', ')}');
       sb.writeln('@riverpod');
-      sb.writeln('$type $camelName(Ref ref) {');
+      sb.writeln('$type $camelName(Ref ref$familyParamDecl) {');
       for (final dep in deps) {
         final cleanName = dep.toString().replaceAll('Provider', '');
+        final isMainDep =
+            cleanName == _camel || cleanName == '${_camel}Notifier';
+        final watchCall =
+            isMainDep ? '$_providerName$familyCall' : '${cleanName}Provider';
         sb.writeln('  // ignore: unused_local_variable');
-        sb.writeln('  final $cleanName = ref.watch(${cleanName}Provider);');
+        sb.writeln('  final $cleanName = ref.watch($watchCall);');
       }
       sb.writeln('''
   // TODO: Add your derived state logic here.
@@ -2400,7 +2508,6 @@ List<$elementClass> filtered${_pascal}Items(Ref ref$familyParamDecl) {
       sb.writeln();
     }
 
-    final isSync = parser.providerType == 'provider';
     if (hasSelectProviders) {
       final coreModel = parser.domainClasses.firstWhere((c) => c.isCore);
       sb.writeln(
@@ -2932,11 +3039,20 @@ class ${_pascal}DebugPage extends ConsumerWidget {
       final fields = requestRootClass.fields;
       for (final f in fields) {
         final val = () {
-          if (parser.requestJson is Map<String, dynamic>) {
-            final jsonVal = parser.requestJson[f.jsonKey];
-            if (jsonVal != null) {
-              return _formatDartLiteral(jsonVal);
+          final jsonVal = parser.requestJson is Map<String, dynamic>
+              ? parser.requestJson[f.jsonKey]
+              : null;
+          if (jsonVal != null) {
+            if (f.isNestedObject && jsonVal is Map<String, dynamic>) {
+              return _generateDtoInstantiation(f.nestedClassName!, jsonVal);
+            } else if (f.isNestedList && jsonVal is List) {
+              final elems = jsonVal
+                  .whereType<Map<String, dynamic>>()
+                  .map((e) => _generateDtoInstantiation(f.nestedClassName!, e))
+                  .join(', ');
+              return '[$elems]';
             }
+            return _formatDartLiteral(jsonVal);
           }
           final cleanType = f.typeName.endsWith('?')
               ? f.typeName.substring(0, f.typeName.length - 1)
@@ -3046,8 +3162,28 @@ class ${_pascal}DebugPage extends ConsumerWidget {
       ]));
     });''';
       }
-    } else {
+    } else if (parser.providerType == 'provider') {
       testCasesCode = '''
+    test('success resolves provider to data', () {
+      final mockData = $mockDataStr;
+      mockRepository.$getResultField = $getResultAssignment;
+
+      final result = container.read($providerName$providerArgsStr);
+      expect(result, equals(mockData));
+    });
+
+    test('failure throws error', () {
+      const failure = ${_pascal}Failure.serverError('Server error');
+      mockRepository.$getResultField = $getResultFailureAssignment;
+
+      expect(
+        () => container.read($providerName$providerArgsStr),
+        throwsA(equals(failure)),
+      );
+    });''';
+    } else {
+      if (_hasGet) {
+        testCasesCode = '''
     test('success resolves provider to data', () async {
       final mockData = $mockDataStr;
       mockRepository.$getResultField = $getResultAssignment;
@@ -3082,6 +3218,75 @@ class ${_pascal}DebugPage extends ConsumerWidget {
 
       subscription.close();
     });''';
+      } else {
+        final defaultStateVal = _generateDefaultDomainState();
+        final isClassNotifier = parser.providerType == 'notifier' ||
+            parser.providerType == 'async_notifier' ||
+            parser.providerType == 'stream_notifier';
+
+        if (isClassNotifier) {
+          final firstMethod = methods.contains('POST') ? 'POST' : methods.first;
+          final submitMethodName = _methodName(firstMethod);
+          final submitResultField = '${submitMethodName}Result';
+
+          testCasesCode = '''
+    test('initial state is default domain state', () async {
+      final subscription = container.listen($providerName$providerArgsStr, (_, __) {});
+      final result = await container.read($providerName$providerArgsStr.future);
+      expect(result, equals($defaultStateVal));
+      subscription.close();
+    });
+
+    test('submit transitions state correctly on success', () async {
+      mockRepository.$submitResultField = right(unit);
+
+      final notifier = container.read($providerName$providerArgsStr.notifier);
+      await container.read($providerName$providerArgsStr.future);
+      final states = <AsyncValue<$_dataType>>[];
+      container.listen(
+        $providerName$providerArgsStr,
+        (_, next) => states.add(next),
+        fireImmediately: true,
+      );
+
+      await notifier.submit($submitArgs);
+
+      expect(states.length, equals(3));
+      expect(states[0], equals(AsyncData($defaultStateVal)));
+      expect(states[1], isA<AsyncLoading<$_dataType>>());
+      expect(states[2], equals(AsyncData($defaultStateVal)));
+    });
+
+    test('submit transitions to error on failure', () async {
+      const failure = ${_pascal}Failure.serverError('Server error');
+      mockRepository.$submitResultField = left(failure);
+
+      final notifier = container.read($providerName$providerArgsStr.notifier);
+      await container.read($providerName$providerArgsStr.future);
+      final states = <AsyncValue<$_dataType>>[];
+      container.listen(
+        $providerName$providerArgsStr,
+        (_, next) => states.add(next),
+        fireImmediately: true,
+      );
+
+      await notifier.submit($submitArgs);
+
+      expect(states.length, equals(3));
+      expect(states[0], equals(AsyncData($defaultStateVal)));
+      expect(states[1], isA<AsyncLoading<$_dataType>>());
+      expect(states[2], isA<AsyncError<$_dataType>>());
+    });''';
+        } else {
+          testCasesCode = '''
+    test('initial state is default domain state', () async {
+      final subscription = container.listen($providerName$providerArgsStr, (_, __) {});
+      final result = await container.read($providerName$providerArgsStr.future);
+      expect(result, equals($defaultStateVal));
+      subscription.close();
+    });''';
+        }
+      }
     }
 
     return '''
@@ -3150,7 +3355,7 @@ $testCasesCode
     return '''
 ${_fileHeader()}
 import 'package:freezed_annotation/freezed_annotation.dart';
-$importDto
+${_customImports()}$importDto
 part '${_snake}_form_state.freezed.dart';
 
 @freezed
@@ -3223,9 +3428,22 @@ ${sb.toString()}    @Default(false) bool isSubmitting,
       repoArgs.add('$name: $name');
     });
 
-    final assignments = requestRootClass.fields
-        .map((f) => '${f.dartName}: state.${f.dartName}')
-        .join(', ');
+    final assignments = requestRootClass.fields.map((f) {
+      final cleanType = f.typeName.endsWith('?')
+          ? f.typeName.substring(0, f.typeName.length - 1)
+          : f.typeName;
+      final isPrimitive = cleanType == 'String' ||
+          cleanType == 'int' ||
+          cleanType == 'double' ||
+          cleanType == 'num' ||
+          cleanType == 'bool' ||
+          cleanType.startsWith('List<');
+
+      final needsBang = !f.typeName.endsWith('?') && !isPrimitive;
+      final valueExpr =
+          needsBang ? 'state.${f.dartName}!' : 'state.${f.dartName}';
+      return '${f.dartName}: $valueExpr';
+    }).join(', ');
     repoArgs.add('request: ${_pascal}RequestDto($assignments)');
 
     final submitParamsStr =
@@ -3247,6 +3465,7 @@ ${_fileHeader(editable: true)}
 import 'dart:async';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+${_customImports()}
 
 import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
 import 'package:$packageName/features/$_snake/domain/${_snake}_failure.dart';
@@ -3464,50 +3683,7 @@ ${validatorsSb.toString()}
   String _generateDtoInstantiation(String className, Map<String, dynamic> map) {
     final cleanClassName =
         className.endsWith('Dto') ? className : '${className}Dto';
-    final lookupName = className.endsWith('Dto')
-        ? className.substring(0, className.length - 3)
-        : className;
-    final allDtoClasses = [
-      ...parser.requestDtoClasses,
-      ...parser.responseDtoClasses,
-    ];
-    final dtoClass =
-        allDtoClasses.where((c) => c.className == lookupName).firstOrNull;
-
-    // If the DTO class is not found locally (e.g. it's a registry-matched core DTO),
-    // fall back to .fromJson() to avoid missing required fields.
-    if (dtoClass == null) {
-      return '$cleanClassName.fromJson(${_formatDartLiteral(map)})';
-    }
-
-    final sb = StringBuffer()..write('$cleanClassName(');
-    final assignments = <String>[];
-    for (final field in dtoClass.fields) {
-      final val = map[field.jsonKey];
-      if (val == null) {
-        assignments.add('${field.dartName}: null');
-      } else if (field.isNestedObject && val is Map<String, dynamic>) {
-        assignments.add(
-            '${field.dartName}: ${_generateDtoInstantiation(field.nestedClassName!, val)}');
-      } else if (field.isNestedList && val is List) {
-        final elems = val
-            .whereType<Map<String, dynamic>>()
-            .map((e) => _generateDtoInstantiation(field.nestedClassName!, e))
-            .join(', ');
-        assignments.add('${field.dartName}: [$elems]');
-      } else {
-        if ((field.typeName == 'DateTime' || field.typeName == 'DateTime?') &&
-            val is String) {
-          assignments.add(
-              '${field.dartName}: DateTime.parse(${_formatDartLiteral(val)})');
-        } else {
-          assignments.add('${field.dartName}: ${_formatDartLiteral(val)}');
-        }
-      }
-    }
-    sb.write(assignments.join(', '));
-    sb.write(')');
-    return sb.toString();
+    return '$cleanClassName.fromJson(${_formatDartLiteral(map)})';
   }
 
   String generateOfflineQueueCode() {
@@ -3814,8 +3990,21 @@ base class DebugProviderObserver extends ProviderObserver {
     }
     final domainImport = sbDomainImports.toString();
 
-    final params = pathParamsMap.values.join(', ');
-    final lambdaParams = params.isNotEmpty ? 'ref, $params' : 'ref';
+    final String familyParamDecl;
+    final String familyCall;
+    if (pathParamsMap.isNotEmpty) {
+      familyParamDecl = pathParamsMap.values.map((v) => 'String $v, ').join('');
+      familyCall = '(' + pathParamsMap.values.join(', ') + ')';
+    } else if (familyParam != null) {
+      final name = familyParam!['name']!;
+      final type = familyParam!['type']!;
+      familyParamDecl = '$type $name, ';
+      familyCall = '($name)';
+    } else {
+      familyParamDecl = '';
+      familyCall = '';
+    }
+
     final buildParams = _notifierBuildParams();
 
     final String stateType;
@@ -3826,26 +4015,25 @@ base class DebugProviderObserver extends ProviderObserver {
       case 'provider':
         stateType = _dataType;
         overrideBody =
-            'return $_providerName.overrideWith(($lambdaParams) => mockValue);';
+            'return $_providerName$familyCall.overrideWith((ref) => mockValue);';
         extraClasses = '';
         break;
       case 'future_provider':
         stateType = 'FutureOr<$_dataType>';
         overrideBody =
-            'return $_providerName.overrideWith(($lambdaParams) => mockValue);';
+            'return $_providerName$familyCall.overrideWith((ref) => mockValue);';
         extraClasses = '';
         break;
       case 'stream_provider':
         stateType = 'Stream<$_dataType>';
         overrideBody =
-            'return $_providerName.overrideWith(($lambdaParams) => mockValue);';
+            'return $_providerName$familyCall.overrideWith((ref) => mockValue);';
         extraClasses = '';
         break;
       case 'notifier':
         stateType = '${_pascal}State';
-        overrideBody = params.isNotEmpty
-            ? 'return $_providerName.overrideWith2(($params) => Mock${_pascal}Notifier(mockValue));'
-            : 'return $_providerName.overrideWith(() => Mock${_pascal}Notifier(mockValue));';
+        overrideBody =
+            'return $_providerName$familyCall.overrideWith(() => Mock${_pascal}Notifier(mockValue));';
         extraClasses = '''
 
 class Mock${_pascal}Notifier extends ${_pascal}Notifier {
@@ -3859,9 +4047,8 @@ class Mock${_pascal}Notifier extends ${_pascal}Notifier {
         break;
       case 'async_notifier':
         stateType = 'FutureOr<$_dataType>';
-        overrideBody = params.isNotEmpty
-            ? 'return $_providerName.overrideWith2(($params) => Mock${_pascal}Notifier(mockValue));'
-            : 'return $_providerName.overrideWith(() => Mock${_pascal}Notifier(mockValue));';
+        overrideBody =
+            'return $_providerName$familyCall.overrideWith(() => Mock${_pascal}Notifier(mockValue));';
         extraClasses = '''
 
 class Mock${_pascal}Notifier extends ${_pascal}Notifier {
@@ -3875,9 +4062,8 @@ class Mock${_pascal}Notifier extends ${_pascal}Notifier {
         break;
       case 'stream_notifier':
         stateType = 'Stream<$_dataType>';
-        overrideBody = params.isNotEmpty
-            ? 'return $_providerName.overrideWith2(($params) => Mock${_pascal}Notifier(mockValue));'
-            : 'return $_providerName.overrideWith(() => Mock${_pascal}Notifier(mockValue));';
+        overrideBody =
+            'return $_providerName$familyCall.overrideWith(() => Mock${_pascal}Notifier(mockValue));';
         extraClasses = '''
 
 class Mock${_pascal}Notifier extends ${_pascal}Notifier {
@@ -3892,7 +4078,7 @@ class Mock${_pascal}Notifier extends ${_pascal}Notifier {
       default:
         stateType = 'AsyncValue<$_dataType>';
         overrideBody =
-            'return $_providerName.overrideWith((ref) => mockValue);';
+            'return $_providerName$familyCall.overrideWith((ref) => mockValue);';
         extraClasses = '';
     }
 
@@ -3900,6 +4086,7 @@ class Mock${_pascal}Notifier extends ${_pascal}Notifier {
 ${_fileHeader()}
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:$packageName/features/$_snake/application/providers.dart';
 import 'package:$packageName/features/$_snake/domain/i_${_snake}_repository.dart';
 import 'package:$packageName/features/$_snake/infrastructure/${_snake}_repository_impl.dart';
@@ -3914,7 +4101,7 @@ class ${_pascal}TestOverrides {
   }
 
   /// Override the root query/data provider with a custom value.
-  static Override overrideData($stateType mockValue) {
+  static Override overrideData(${familyParamDecl}$stateType mockValue) {
     $overrideBody
   }
 }$extraClasses

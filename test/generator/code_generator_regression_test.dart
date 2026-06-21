@@ -389,5 +389,77 @@ void main() {
       final dtoCode = generator.generateDtoCode();
       expect(dtoCode.contains(r'settingsTheme: (settings?.theme) ?? '), isTrue);
     });
+
+    test(
+        'form validator respects validation rules required: false for non-nullable DTO fields',
+        () {
+      final parser = JsonParser(
+        featureName: 'Feedback',
+        responseJson: {'id': 1},
+        requestJson: {'comment': 'very good'},
+        validationRules: {
+          'comment': {
+            'required': false,
+            'min_length': 5,
+          }
+        },
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'app',
+        featureName: 'Feedback',
+        endpoint: '/feedback',
+        methods: ['POST'],
+      );
+
+      final formNotifierCode = generator.generateFormNotifierCode();
+      expect(
+          formNotifierCode.contains('if (value.trim().isEmpty) return null;'),
+          isTrue);
+    });
+
+    test(
+        'websocket connects via full URL resolving relative path against baseUrl',
+        () {
+      final parser = JsonParser(
+        featureName: 'Chat',
+        responseJson: {'id': 1},
+        providerType: 'stream_provider',
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'app',
+        featureName: 'Chat',
+        endpoint: '/chat',
+        methods: ['GET'],
+        streamConfig: {'type': 'websocket'},
+      );
+
+      final remoteCode = generator.generateRemoteDataSourceCode();
+      expect(remoteCode.contains("final base = _dio.options.baseUrl;"), isTrue);
+      expect(remoteCode.contains("? endpoint"), isTrue);
+      expect(remoteCode.contains("replaceFirst('http', 'ws')"), isTrue);
+    });
+
+    test(
+        'notifier without GET method constructs default domain state instead of calling getter',
+        () {
+      final parser = JsonParser(
+        featureName: 'Auth',
+        responseJson: {'token': 'jwt_token'},
+        providerType: 'async_notifier',
+      );
+      final generator = CodeGenerator(
+        parser: parser,
+        packageName: 'app',
+        featureName: 'Auth',
+        endpoint: '/login',
+        methods: ['POST'], // No GET method
+      );
+
+      final notifierCode = generator.generateNotifierCode();
+      expect(notifierCode.contains('repository.getAuth'), isFalse);
+      expect(notifierCode.contains('AuthModel('), isTrue);
+    });
   });
 }

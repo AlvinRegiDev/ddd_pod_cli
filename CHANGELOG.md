@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.0.4
+
+- **Feature**: Added helper to construct default domain state values for basic and complex types, ensuring non-nullable fields are initialized cleanly.
+- **Feature**: Refactored generated notifier templates to return default domain states when no GET method is defined, omitting unused query/pagination/refresh methods.
+- **Feature**: Improved request DTO instantiation within the form notifier by using `.fromJson` instead of manually mapping constructors to prevent field mismatches.
+- **Feature**: Added support for custom imports list in generated state, notifier, model, and form state files.
+- **Fix**: Resolved WebSocket URL resolution to correctly resolve relative endpoint paths against Dio's `baseUrl`.
+- **Fix**: Resolved cache-key generation and method signatures for parameterized family providers.
+- **Fix**: Ensured combined/derived providers correctly watch main dependencies with parameterized calls and correct parameter types.
+- **Fix**: Fixed type overrides lookup logic for nested objects and lists to properly propagate overridden types.
+
 ## 1.0.3
 
 - **Feature**: Improved the dependency scaffolder to directly update `pubspec.yaml` and run `pub get` rather than running slower individual `pub add` command calls.

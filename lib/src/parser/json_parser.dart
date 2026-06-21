@@ -708,6 +708,7 @@ final class JsonParser {
       rootClassName,
       coreDtoClassName,
       depth: 0,
+      overridePath: [],
     );
 
     domainClasses.add(DomainClass(
@@ -726,6 +727,7 @@ final class JsonParser {
     String domainPrefix,
     String dtoPrefix, {
     int depth = 0,
+    List<String>? overridePath,
   }) {
     if (depth > _kMaxDepth) {
       throw const SchemaParseException(
@@ -735,14 +737,17 @@ final class JsonParser {
       );
     }
 
+    final effectiveOverridePath = overridePath ?? currentPath;
+
     map.forEach((key, value) {
       if (_excludedRootKeys.contains(key) && currentPath.isEmpty) return;
 
       final newPath = [...currentPath, key];
-      final fieldPath = newPath.join('.');
+      final newOverridePath = [...effectiveOverridePath, key];
+      final fieldPath = newOverridePath.join('.');
       final fullPath = corePathToDomain.isEmpty
           ? fieldPath
-          : [...corePathToDomain, ...newPath].join('.');
+          : [...corePathToDomain, ...newOverridePath].join('.');
       final overriddenType = typeOverrides[fullPath] ??
           typeOverrides[fieldPath] ??
           typeOverrides[key];
@@ -800,6 +805,7 @@ final class JsonParser {
             domainPrefix,
             '$dtoPrefix${StringUtils.toPascalCase(key)}',
             depth: depth + 1,
+            overridePath: newOverridePath,
           );
         }
       } else if (value is List) {
@@ -845,6 +851,7 @@ final class JsonParser {
                   '$domainPrefix${StringUtils.toPascalCase(singularKey)}',
                   '$dtoPrefix${StringUtils.toPascalCase(singularKey)}',
                   depth: depth + 1,
+                  overridePath: newOverridePath,
                 );
 
                 domainClasses.add(DomainClass(
@@ -941,6 +948,7 @@ final class JsonParser {
                 '$domainPrefix${StringUtils.toPascalCase(singularKey)}',
                 '$dtoPrefix${StringUtils.toPascalCase(singularKey)}',
                 depth: depth + 1,
+                overridePath: newOverridePath,
               );
 
               domainClasses.add(DomainClass(
